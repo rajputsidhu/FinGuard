@@ -7,8 +7,15 @@ from fastapi.middleware.cors import CORSMiddleware
 # Add the project root to python path for clean imports
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from src.utils import setup_logger
+from api.config import settings
 from api.health import router as health_router
-from api.schemas import TransactionInput, PredictResponse, ExplainResponse
+from api.schemas import (
+    TransactionInput, 
+    PredictResponse, 
+    ExplainResponse,
+    ModelInfoResponse,
+    ReadinessResponse
+)
 from api.middleware import LoggingAndExceptionMiddleware
 from api.predictor import (
     make_prediction, 
@@ -18,7 +25,8 @@ from api.predictor import (
     get_scaler,
     get_threshold,
     get_feature_names,
-    get_shap_explainer
+    get_shap_explainer,
+    validate_model_artifacts
 )
 
 # Initialize logger
@@ -26,18 +34,19 @@ logger = setup_logger("api_main", "logs/api.log")
 
 # Create FastAPI app
 app = FastAPI(
-    title="Credit Card Fraud Detection API",
-    description="Production-ready FastAPI backend serving XGBoost predictions and dynamic SHAP explanations.",
+    title="FraudGuard AI Risk Assessment API",
+    description="Public AI-powered credit card transaction risk assessment and SHAP explainability service.",
     version="1.0.0"
 )
 
 # Add custom logging and exception middleware first
 app.add_middleware(LoggingAndExceptionMiddleware)
 
-# Add CORS support (necessary for browser clients or frontend integrations)
+# Add CORS support (restricted by environment config)
+cors_origins = settings.CORS_ORIGINS if settings.ENVIRONMENT == "production" else ["*"]
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"], # Allow all origins in development
+    allow_origins=cors_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -46,28 +55,75 @@ app.add_middleware(
 # Mount Health router
 app.include_router(health_router)
 
+# Readiness Probe
+@app.get(
+    "/ready",
+    response_model=ReadinessResponse,
+    tags=["System"],
+    summary="Readiness check for model inference pipeline"
+)
+async def ready_check():
+    """
+    Readiness probe validating whether all required model artifacts are loaded and ready.
+    """
+    validation = validate_model_artifacts()
+    is_ready = validation["artifacts_valid"]
+    return ReadinessResponse(
+        status="ready" if is_ready else "not_ready",
+        model_loaded=is_ready,
+        artifacts_valid=is_ready,
+        artifacts_status=validation["artifacts_status"]
+    )
+
+# Model Metadata Info Endpoint
+@app.get(
+    "/model-info",
+    response_model=ModelInfoResponse,
+    tags=["Metadata"],
+    summary="Get safe public model metadata"
+)
+async def model_info():
+    """
+    Returns public model metadata and decision threshold information without exposing internal secrets.
+    """
+    try:
+        thresh = get_threshold()
+    except Exception:
+        thresh = 0.42
+        
+    return ModelInfoResponse(
+        model="XGBoost",
+        model_version=settings.MODEL_VERSION,
+        explainability="SHAP TreeExplainer",
+        feature_count=30,
+        threshold=round(thresh, 4)
+    )
+
 # Warm Cache on Startup
 @app.on_event("startup")
 async def startup_event():
     """
     On startup, load models and scale configurations into memory.
-    This prevents the first request from encountering 'cold start' latency.
+    Validates model artifacts and logs status.
     """
-    logger.info("Initializing API application. Warming model caches...")
-    try:
-        # Call functions to trigger joblib load and lru_cache storage
-        get_feature_names()
-        get_scaler()
-        get_xgb_model()
-        get_threshold()
-        get_shap_explainer()
-        logger.info("✔ Backend caches warmed. Model artifacts loaded successfully.")
-    except Exception as e:
-        logger.warning(
-            f"⚠ Caches not warmed: {str(e)}. "
-            "This is expected if you have not run the ML pipeline yet. "
-            "Ensure you run 'run_all.sh' before sending prediction requests."
+    logger.info("Initializing API application. Validating model artifacts...")
+    validation = validate_model_artifacts()
+    
+    if not validation["artifacts_valid"]:
+        logger.error(
+            f"✖ Model artifact validation failed! Status: {validation['artifacts_status']}. "
+            "Server running in degraded mode until training pipeline completes."
         )
+    else:
+        try:
+            get_feature_names()
+            get_scaler()
+            get_xgb_model()
+            get_threshold()
+            get_shap_explainer()
+            logger.info("✔ Backend caches warmed. All model artifacts loaded successfully.")
+        except Exception as e:
+            logger.warning(f"⚠ Cache warming encountered warning: {str(e)}")
 
 # ----------------------------------------------------
 # Prediction API Endpoints
@@ -79,14 +135,19 @@ async def startup_event():
 )
 async def model_stats():
     """
-    Returns performance metrics of the trained XGBoost model on the test set.
+    Returns evaluation metrics of the trained XGBoost model on the test dataset split.
     """
     return {
-        "roc_auc": 0.9770,
-        "pr_auc": 0.8449,
-        "recall": 0.8776,
-        "precision": 0.3805,
-        "f1": 0.8144
+        "model": "XGBoost",
+        "model_version": settings.MODEL_VERSION,
+        "dataset_evaluation": {
+            "roc_auc": 0.9770,
+            "pr_auc": 0.8449,
+            "recall": 0.8776,
+            "precision": 0.3805,
+            "f1": 0.8144
+        },
+        "disclaimer": "Metrics represent test set evaluation performance on historical dataset. Not a guarantee of real-world bank fraud prevention."
     }
 
 @app.get(
@@ -108,6 +169,7 @@ async def feature_names():
 
 @app.post(
     "/predict", 
+
     response_model=PredictResponse,
     status_code=status.HTTP_200_OK,
     tags=["Predictions"],

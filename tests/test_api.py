@@ -17,15 +17,39 @@ def test_health_endpoint():
     assert response.status_code == 200
     assert response.json() == {"status": "healthy"}
 
+def test_ready_endpoint():
+    """Verifies GET /ready returns 200 OK and readiness status."""
+    response = client.get("/ready")
+    assert response.status_code == 200
+    res_json = response.json()
+    assert "status" in res_json
+    assert "artifacts_valid" in res_json
+
+def test_model_info_endpoint():
+    """Verifies GET /model-info returns metadata."""
+    response = client.get("/model-info")
+    assert response.status_code == 200
+    res_json = response.json()
+    assert res_json["model"] == "XGBoost"
+    assert res_json["explainability"] == "SHAP TreeExplainer"
+
 @patch("api.main.make_prediction")
 def test_predict_endpoint_success(mock_make_prediction):
     """Verifies POST /predict parses inputs correctly and returns predictions."""
     # Configure mock prediction return value
     mock_make_prediction.return_value = PredictResponse(
         prediction="LEGITIMATE",
-        fraud_probability=0.08,
+        model_assessment="Appears consistent with typical legitimate transaction patterns",
+        risk_score=8,
+        risk_level="LOW",
+        model_probability=0.08,
         threshold=0.42,
-        risk_level="LOW"
+        model_version="xgb-v1.0",
+        explanation_factors=[],
+        fraud_probability=0.08,
+        is_fraud=False,
+        probability=0.08,
+        shap_values={}
     )
     
     # Create valid payload
@@ -38,11 +62,13 @@ def test_predict_endpoint_success(mock_make_prediction):
     res_json = response.json()
     assert res_json["prediction"] == "LEGITIMATE"
     assert res_json["fraud_probability"] == 0.08
+    assert res_json["risk_score"] == 8
     assert res_json["risk_level"] == "LOW"
     assert res_json["threshold"] == 0.42
     
     # Assert predictor helper was called once
     mock_make_prediction.assert_called_once()
+
 
 def test_predict_endpoint_validation_error():
     """Verifies that POST /predict returns 422 Unprocessable Entity on validation fail."""

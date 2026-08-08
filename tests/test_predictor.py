@@ -89,5 +89,6 @@ def test_make_prediction_fraud(mock_get_threshold, mock_get_xgb_model, mock_prep
     
     assert response.prediction == "FRAUD"
     assert response.fraud_probability == 0.95
-    assert response.risk_level == "VERY HIGH"
+    assert response.risk_level == "CRITICAL"
     assert response.threshold == 0.40
+

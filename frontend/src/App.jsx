@@ -1,27 +1,33 @@
-import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
-import Navbar from './components/Navbar';
-import Dashboard from './pages/Dashboard';
-import LiveMonitor from './pages/LiveMonitor';
-import ModelStats from './pages/ModelStats';
-import BatchUpload from './pages/BatchUpload';
+import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
+import AppShell from './components/layout/AppShell';
+import RiskAssessment from './pages/RiskAssessment';
+import IntelligenceDashboard from './pages/IntelligenceDashboard';
+import BatchAnalysis from './pages/BatchAnalysis';
+import ModelIntelligence from './pages/ModelIntelligence';
+import ApiExplorer from './pages/ApiExplorer';
+import PrivacySafetyCenter from './pages/PrivacySafetyCenter';
 import './styles/global.css';
-import './styles/components.css';
+import './styles/console.css';
 
 function App() {
   return (
     <Router>
-      <Navbar />
-      <Routes>
-        <Route path="/" element={<Dashboard />} />
-        <Route path="/live-monitor" element={<LiveMonitor />} />
-        <Route path="/model-stats" element={<ModelStats />} />
-        <Route path="/batch-upload" element={<BatchUpload />} />
-      </Routes>
+      <AppShell>
+        <Routes>
+          <Route path="/" element={<RiskAssessment />} />
+          <Route path="/dashboard" element={<IntelligenceDashboard />} />
+          <Route path="/batch-upload" element={<BatchAnalysis />} />
+          <Route path="/how-it-works" element={<ModelIntelligence />} />
+          <Route path="/api-explorer" element={<ApiExplorer />} />
+          <Route path="/privacy" element={<PrivacySafetyCenter />} />
+          
+          {/* Backward compatibility redirects */}
+          <Route path="/live-monitor" element={<Navigate to="/" replace />} />
+          <Route path="/model-stats" element={<Navigate to="/dashboard" replace />} />
+        </Routes>
+      </AppShell>
     </Router>
   );
 }
 
 export default App;
-
-
-

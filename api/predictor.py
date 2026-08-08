@@ -23,6 +23,29 @@ THRESHOLD_PATH = "models/best_threshold.pkl"
 EXPLAINER_PATH = "models/shap_explainer.pkl"
 FEATURES_PATH = "models/feature_names.pkl"
 
+def validate_model_artifacts() -> Dict[str, Any]:
+    """
+    Validates presence of all required model artifacts on disk.
+    Used by startup checks and the GET /ready probe.
+    """
+    status_dict = {
+        "model_xgb.pkl": os.path.exists(MODEL_PATH),
+        "scaler.pkl": os.path.exists(SCALER_PATH),
+        "best_threshold.pkl": os.path.exists(THRESHOLD_PATH),
+        "shap_explainer.pkl": os.path.exists(EXPLAINER_PATH),
+        "feature_names.pkl": os.path.exists(FEATURES_PATH)
+    }
+    # Threshold is technically optional (has fallback 0.5), but core model artifacts are required
+    required_valid = (
+        status_dict["model_xgb.pkl"] and
+        status_dict["scaler.pkl"] and
+        status_dict["feature_names.pkl"]
+    )
+    return {
+        "artifacts_valid": required_valid,
+        "artifacts_status": status_dict
+    }
+
 # ----------------------------------------------------
 # LRU Cache Model Loaders to prevent file I/O overhead
 # ----------------------------------------------------
@@ -107,8 +130,8 @@ def preprocess_input(transaction: TransactionInput) -> np.ndarray:
 def make_prediction(transaction: TransactionInput) -> PredictResponse:
     """
     Preprocesses input features, runs XGBoost model prediction,
-    applies the optimized decision threshold, computes SHAP values dynamically,
-    and returns the classification with explainability metrics.
+    applies the decision threshold, computes SHAP values dynamically,
+    and returns human-readable risk score, risk level, and explanation factors.
     """
     # Force loads objects (cached after first request)
     xgb = get_xgb_model()
@@ -124,17 +147,27 @@ def make_prediction(transaction: TransactionInput) -> PredictResponse:
     # Apply Threshold logic
     prediction = "FRAUD" if fraud_prob >= threshold else "LEGITIMATE"
     
-    # Risk Level categorization
-    if fraud_prob < 0.15:
+    # Model-generated Risk Score (0 - 100 scale)
+    risk_score = int(round(min(1.0, max(0.0, fraud_prob)) * 100))
+    
+    # Risk Level categorization (Prompt section 10 guidance)
+    # 0–30 LOW, 31–60 MEDIUM, 61–80 HIGH, 81–100 CRITICAL
+    if risk_score <= 30:
         risk_level = "LOW"
-    elif fraud_prob < threshold:
+        model_assessment = "Appears consistent with typical legitimate transaction patterns"
+    elif risk_score <= 60:
         risk_level = "MEDIUM"
-    elif fraud_prob < 0.80:
+        model_assessment = "Mild variance from baseline transaction patterns observed"
+    elif risk_score <= 80:
         risk_level = "HIGH"
+        model_assessment = "Potentially suspicious transaction pattern detected"
     else:
-        risk_level = "VERY HIGH"
+        risk_level = "CRITICAL"
+        model_assessment = "High resemblance to previously identified fraudulent transaction patterns"
         
-    # Calculate SHAP values dynamically for React frontend
+    # Calculate SHAP values dynamically for explainability
+    shap_dict = {}
+    explanation_factors = []
     try:
         explainer = get_shap_explainer()
         feature_names = get_feature_names()
@@ -144,22 +177,56 @@ def make_prediction(transaction: TransactionInput) -> PredictResponse:
         except Exception:
             shap_values_vector = explainer.shap_values(X_inference)[0]
             
-        shap_dict = {}
+        # Build SHAP dictionary
+        shap_tuples = []
         for feat_name, shap_val in zip(feature_names, shap_values_vector):
-            shap_dict[feat_name] = round(float(shap_val), 4)
+            val = float(shap_val)
+            shap_dict[feat_name] = round(val, 4)
+            shap_tuples.append((feat_name, val))
+            
+        # Top 3 most influential drivers
+        sorted_tuples = sorted(shap_tuples, key=lambda item: abs(item[1]), reverse=True)
+        top_3 = sorted_tuples[:3]
+        
+        for feat, val in top_3:
+            impact_level = "high" if abs(val) > 0.5 else ("medium" if abs(val) > 0.1 else "low")
+            direction = "increases_risk" if val > 0 else "decreases_risk"
+            
+            if feat == "Amount":
+                desc = "Transaction amount-related characteristics contributed to the score assessment"
+            elif feat == "Time":
+                desc = "Transaction timing window aligned with historical usage patterns"
+            else:
+                desc = f"Transaction behavior pattern feature '{feat}' contributed to the model score"
+                
+            from api.schemas import ExplanationFactor
+            explanation_factors.append(
+                ExplanationFactor(
+                    factor=feat,
+                    impact=impact_level,
+                    direction=direction,
+                    description=desc
+                )
+            )
     except Exception as e:
         logger.warning(f"Failed to generate SHAP values inside make_prediction: {e}")
         shap_dict = {}
         
     return PredictResponse(
         prediction=prediction,
-        fraud_probability=round(fraud_prob, 4),
-        threshold=round(threshold, 4),
+        model_assessment=model_assessment,
+        risk_score=risk_score,
         risk_level=risk_level,
+        model_probability=round(fraud_prob, 4),
+        threshold=round(threshold, 4),
+        model_version="xgb-v1.0",
+        explanation_factors=explanation_factors,
+        fraud_probability=round(fraud_prob, 4),
         is_fraud=(prediction == "FRAUD"),
         probability=round(fraud_prob, 4),
         shap_values=shap_dict
     )
+
 
 def generate_explanation(transaction: TransactionInput) -> ExplainResponse:
     """

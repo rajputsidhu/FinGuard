@@ -1,5 +1,5 @@
 import axios from 'axios';
-import { mockPrediction, mockLegitPrediction, mockModelStats, mockFeatureNames } from '../data/mockData';
+import { mockPrediction, mockLegitPrediction, mockModelStats, mockFeatureNames, mockModelInfo } from '../data/mockData';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
 
@@ -9,18 +9,39 @@ export const predictFraud = async (transactionData) => {
     const response = await axios.post(`${API_URL}/predict`, transactionData);
     return { data: response.data, error: null };
   } catch (error) {
-    console.error('API Error: predictFraud failed, using mock data.', error);
-    // Simulate network delay
-    await new Promise(resolve => setTimeout(resolve, 800));
-    // Determine which mock to use based on sum of values (just for demo interactivity)
-    const isHighRisk = (transactionData.Amount > 1000) || (transactionData.V1 > 2);
-    const mockData = isHighRisk ? mockPrediction : mockLegitPrediction;
+    console.warn('API Error or server offline: predictFraud using dynamic fallback mock data.', error);
+    await new Promise(resolve => setTimeout(resolve, 600));
     
-    // Create random variation for mock data to look dynamic
-    const variation = (Math.random() * 0.1) - 0.05;
+    // Determine risk based on transaction input characteristics
+    const amount = Number(transactionData.Amount || 0);
+    const v14 = Number(transactionData.V14 || 0);
+    const v17 = Number(transactionData.V17 || 0);
+    
+    const isSuspicious = (amount > 1000) || (v14 < -2.0) || (v17 < -2.0);
+    const isHighValue = (amount > 2000) || (v14 < -4.0);
+    
+    let baseMock = isHighValue 
+      ? { ...mockPrediction, risk_score: 94, risk_level: "CRITICAL", model_probability: 0.941 }
+      : (isSuspicious ? mockPrediction : mockLegitPrediction);
+      
+    // Add micro-variation for interactive feel
+    const variation = (Math.random() * 0.04) - 0.02;
+    const finalProb = Math.max(0.01, Math.min(0.99, baseMock.model_probability + variation));
+    const finalScore = Math.round(finalProb * 100);
+    
+    let riskLevel = "LOW";
+    if (finalScore > 80) riskLevel = "CRITICAL";
+    else if (finalScore > 60) riskLevel = "HIGH";
+    else if (finalScore > 30) riskLevel = "MEDIUM";
+
     const modifiedMock = {
-      ...mockData,
-      probability: Math.max(0, Math.min(1, mockData.probability + variation))
+      ...baseMock,
+      model_probability: parseFloat(finalProb.toFixed(4)),
+      fraud_probability: parseFloat(finalProb.toFixed(4)),
+      probability: parseFloat(finalProb.toFixed(4)),
+      risk_score: finalScore,
+      risk_level: riskLevel,
+      is_fraud: finalScore >= 42
     };
     
     return { data: modifiedMock, error: null };
@@ -33,9 +54,37 @@ export const getModelStats = async () => {
     const response = await axios.get(`${API_URL}/model-stats`);
     return { data: response.data, error: null };
   } catch (error) {
-    console.error('API Error: getModelStats failed, using mock data.', error);
-    await new Promise(resolve => setTimeout(resolve, 500));
+    console.warn('API Warning: getModelStats failed, using mock data.', error);
     return { data: mockModelStats, error: null };
+  }
+};
+
+export const getModelInfo = async () => {
+  try {
+    console.log('API Call: GET /model-info');
+    const response = await axios.get(`${API_URL}/model-info`);
+    return { data: response.data, error: null };
+  } catch (error) {
+    console.warn('API Warning: getModelInfo failed, using mock data.', error);
+    return { data: mockModelInfo, error: null };
+  }
+};
+
+export const getReadiness = async () => {
+  try {
+    console.log('API Call: GET /ready');
+    const response = await axios.get(`${API_URL}/ready`);
+    return { data: response.data, error: null };
+  } catch (error) {
+    return { 
+      data: { 
+        status: "offline", 
+        model_loaded: false, 
+        artifacts_valid: false,
+        artifacts_status: { "note": "Backend server is currently offline or unreachable." }
+      }, 
+      error: null 
+    };
   }
 };
 
@@ -45,7 +94,7 @@ export const getFeatureNames = async () => {
     const response = await axios.get(`${API_URL}/feature-names`);
     return { data: response.data, error: null };
   } catch (error) {
-    console.error('API Error: getFeatureNames failed, using mock data.', error);
+    console.warn('API Warning: getFeatureNames failed, using mock data.', error);
     return { data: mockFeatureNames, error: null };
   }
 };
@@ -62,39 +111,36 @@ export const predictFile = async (file) => {
     });
     return { data: response.data, error: null };
   } catch (error) {
-    console.error('API Error: predictFile failed. Falling back to mock dataset simulation.', error);
-    // Simulate network delay for progress indicator
-    await new Promise(resolve => setTimeout(resolve, 1500));
+    console.warn('API Error: predictFile failed. Simulating batch dataset execution.', error);
+    await new Promise(resolve => setTimeout(resolve, 1200));
     
-    // Generate realistic, randomized mock batch predictions
-    const totalCount = Math.floor(Math.random() * 150) + 50;
-    const fraudCount = Math.floor(Math.random() * 6) + 2;
+    const totalCount = Math.floor(Math.random() * 80) + 40;
+    const fraudCount = Math.floor(Math.random() * 5) + 2;
     const legitCount = totalCount - fraudCount;
     const fraudRatio = ((fraudCount / totalCount) * 100).toFixed(2);
     
     const predictions = Array.from({ length: totalCount }).map((_, idx) => {
-      const isFraud = idx < fraudCount; // Assign first few as fraud for predictable counts
-      const prob = isFraud 
-        ? (0.75 + Math.random() * 0.24) 
-        : (Math.random() * 0.12);
+      const isFraud = idx < fraudCount;
+      const prob = isFraud ? (0.75 + Math.random() * 0.22) : (Math.random() * 0.12);
+      const score = Math.round(prob * 100);
       
       let riskLevel = "LOW";
-      if (prob >= 0.80) riskLevel = "VERY HIGH";
-      else if (prob >= 0.50) riskLevel = "HIGH";
-      else if (prob >= 0.15) riskLevel = "MEDIUM";
+      if (score > 80) riskLevel = "CRITICAL";
+      else if (score > 60) riskLevel = "HIGH";
+      else if (score > 30) riskLevel = "MEDIUM";
       
       return {
         row_index: idx + 1,
         Time: Math.floor(Math.random() * 170000),
-        Amount: parseFloat((Math.random() * 800).toFixed(2)),
+        Amount: parseFloat((Math.random() * 850).toFixed(2)),
         fraud_probability: parseFloat(prob.toFixed(4)),
         prediction: isFraud ? "FRAUD" : "LEGITIMATE",
+        risk_score: score,
         risk_level: riskLevel,
         is_fraud: isFraud
       };
     });
     
-    // Sort predictions so that fraud and high-risk cases appear first
     predictions.sort((a, b) => b.fraud_probability - a.fraud_probability);
     
     return {
@@ -110,31 +156,34 @@ export const predictFile = async (file) => {
   }
 };
 
+export const predictBatchFile = predictFile;
+
+
 export const explainTransaction = async (transactionData) => {
   try {
     console.log('API Call: POST /explain', transactionData);
     const response = await axios.post(`${API_URL}/explain`, transactionData);
     return { data: response.data, error: null };
   } catch (error) {
-    console.error('API Error: explainTransaction failed. Simulating local SHAP explanation.', error);
-    await new Promise(resolve => setTimeout(resolve, 800));
+    console.warn('API Warning: explainTransaction failed, using mock explanations.', error);
+    await new Promise(resolve => setTimeout(resolve, 600));
     
-    // Sort features by impact; fraud indicator PCA features look highly anomalous
-    const amount = transactionData.Amount || 0;
-    const isFraudulent = amount > 1000 || Math.abs(transactionData.V14 || 0) > 2 || Math.abs(transactionData.V17 || 0) > 2;
+    const amount = Number(transactionData.Amount || 0);
+    const v14 = Number(transactionData.V14 || 0);
+    const isHighRisk = amount > 1000 || v14 < -2.0;
     
-    const topFeatures = isFraudulent ? [
-      { feature: 'V14', shap_value: -1.95 },
-      { feature: 'V17', shap_value: -1.48 },
+    const topFeatures = isHighRisk ? [
+      { feature: 'V14', shap_value: -2.85 },
+      { feature: 'V17', shap_value: -2.10 },
       { feature: 'Amount', shap_value: 0.88 },
       { feature: 'V12', shap_value: -0.72 },
       { feature: 'V10', shap_value: -0.51 }
     ] : [
       { feature: 'V14', shap_value: 0.12 },
-      { feature: 'V17', shap_value: 0.08 },
       { feature: 'Amount', shap_value: -0.15 },
+      { feature: 'V17', shap_value: 0.08 },
       { feature: 'V12', shap_value: 0.05 },
-      { feature: 'V10', shap_value: 0.02 }
+      { feature: 'Time', shap_value: -0.02 }
     ];
     
     const shapValues = {};
@@ -147,7 +196,7 @@ export const explainTransaction = async (transactionData) => {
     
     return {
       data: {
-        base_value: isFraudulent ? -4.12 : -5.45,
+        base_value: isHighRisk ? -4.12 : -5.45,
         top_features: topFeatures,
         shap_values: shapValues
       },
@@ -155,5 +204,3 @@ export const explainTransaction = async (transactionData) => {
     };
   }
 };
-
-

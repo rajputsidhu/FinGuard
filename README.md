@@ -1,298 +1,326 @@
-# End-to-End Credit Card Fraud Detection Platform
+# 🛡️ FraudGuard — AI-Powered Transaction Risk Assessment Platform
 
-### A production-ready machine learning platform handling extreme class imbalance with cost-optimized XGBoost and explainable SHAP features, exposed via FastAPI and visualized in an interactive Streamlit dashboard.
+[![Python 3.11](https://img.shields.io/badge/Python-3.11-blue.svg)](https://www.python.org/)
+[![FastAPI](https://img.shields.io/badge/FastAPI-0.95.1-009688.svg)](https://fastapi.tiangolo.com/)
+[![XGBoost](https://img.shields.io/badge/XGBoost-1.7.6-orange.svg)](https://xgboost.readthedocs.io/)
+[![SHAP](https://img.shields.io/badge/SHAP-0.41.0-green.svg)](https://shap.readthedocs.io/)
+[![React](https://img.shields.io/badge/React-18.0-61dafb.svg)](https://reactjs.org/)
+[![Vite](https://img.shields.io/badge/Vite-5.4-646cff.svg)](https://vitejs.dev/)
+[![Docker](https://img.shields.io/badge/Docker-Enabled-2496ed.svg)](https://www.docker.com/)
+
+**FraudGuard** is a production-ready, explainable AI transaction risk assessment application. It evaluates credit card transaction patterns using an **Extreme Gradient Boosting (XGBoost)** classifier optimized for severe class imbalance, calculates feature-level contributions via **SHAP (SHapley Additive exPlanations)**, and presents human-understandable risk scores and safety guidance through a modern React/Vite interface.
+
+---
+
+## 📌 Problem & Solution
+
+### The Problem
+1. **Extreme Class Imbalance:** Fraudulent transactions account for less than **0.17%** of credit card activity (99.83% legitimate), rendering standard accuracy metrics useless and causing naive classifiers to miss fraud entirely.
+2. **Black-Box Opacity:** Traditional ML models produce raw, unexplainable probability numbers, making it impossible for risk auditors and customers to understand *why* a transaction was flagged.
+3. **User Friction & Privacy Concerns:** Many public security applications force non-technical users to interpret abstract mathematical vectors or collect sensitive banking credentials.
+
+### The Solution
+FraudGuard provides an end-to-end, privacy-first solution:
+* **Cost-Optimized XGBoost Classification:** Trained with SMOTE oversampling and threshold-swept to maximize **F1-Score (0.42)** and **PR-AUC (0.8449)**.
+* **Explainable AI (SHAP):** Computes game-theoretic Shapley values dynamically to translate PCA feature vectors into plain-English explanation factors.
+* **Dual User Modes:**
+  * **Simple User Mode:** Intuitive inputs (Transaction Amount in currency, Transaction Type, Time of Day, Location Context) mapped to baseline vectors.
+  * **Advanced Technical Mode:** Full access to all 30 features (`Time`, `Amount`, `V1`–`V28`), raw probability scores, decision thresholds, and SHAP vectors.
+* **Human-Readable Risk Scores:** Displays a 0–100 **Model-Generated Risk Score** and categorizes risk into **LOW**, **MEDIUM**, **HIGH**, or **CRITICAL**.
+* **Actionable Safety Guidance:** Provides practical, non-financial guidance steps for high-risk flags (e.g. checking banking apps, contacting card issuers).
+* **Privacy-by-Design:** **Never** asks for or accepts full card numbers, CVVs, PINs, OTPs, or banking passwords.
 
 ---
 
 ## 🏗 System Architecture
 
-The platform follows a decoupled client-server architecture. The frontend Streamlit dashboard communicates with the FastAPI backend solely via REST API calls. The backend handles all preprocessing, XGBoost classification, decision thresholding, and SHAP feature explainability calculations.
-
 ```mermaid
 graph TD
-    User([End User]) <-->|Interacts| Streamlit[Streamlit Frontend Dashboard]
-    Streamlit <-->|JSON POST requests| FastAPI[FastAPI Backend Server]
+    User([Public User / Auditor]) <-->|Interacts| ReactApp[React 18 + Vite Frontend]
+    ReactApp <-->|REST API / JSON| FastAPI[FastAPI Backend Server]
     
-    subgraph FastAPI Backend
-        API_Main[api/main.py] <--> API_Predict[api/predictor.py]
-        API_Predict -->|1. Preprocessing| Scaler[StandardScaler scaler.pkl]
-        API_Predict -->|2. Inference| XGBoost[XGBoost Model model_xgb.pkl]
-        API_Predict -->|3. Thresholding| Threshold[Optimized F1 Threshold best_threshold.pkl]
-        API_Predict -->|4. Explainability| SHAP[SHAP TreeExplainer shap_explainer.pkl]
+    subgraph FastAPI Backend Application
+        Middleware[Logging & Exception Middleware] --> Router[API Main Router]
+        Router --> ReadinessProbe[GET /ready Probe]
+        Router --> PredictEndpoint[POST /predict]
+        Router --> ExplainEndpoint[POST /explain]
+        Router --> BatchEndpoint[POST /predict-file]
+        
+        PredictEndpoint --> Predictor[api/predictor.py]
+        Predictor --> Scaler[StandardScaler models/scaler.pkl]
+        Predictor --> XGBoost[XGBoost Model models/model_xgb.pkl]
+        Predictor --> Threshold[Optimized F1 Threshold models/best_threshold.pkl]
+        Predictor --> SHAP[SHAP TreeExplainer models/shap_explainer.pkl]
     end
     
-    subgraph Offline ML Pipeline
-        CSV[(creditcard.csv)] --> EDA[01_eda.py]
-        CSV --> Prep[02_preprocessing.py]
-        Prep -->|Stratified Split + SMOTE + RUS| Train_Data[(X_train, y_train)]
-        Train_Data --> Train[03_model_training.py]
-        Train -->|Compare Models| Model_Saves[models/*]
-        Model_Saves --> Eval[04_evaluation.py]
-        Eval -->|Threshold Sweep| Threshold
-        Model_Saves --> Explainer[05_shap_explainability.py]
-        Explainer --> SHAP
+    subgraph ML Pipeline & Artifacts
+        Dataset[(data/creditcard.csv)] --> EDA[src/01_eda.py]
+        Dataset --> Preprocessing[src/02_preprocessing.py]
+        Preprocessing -->|Stratified Split + SMOTE + RUS| TrainData[(data_processed/*)]
+        TrainData --> ModelTraining[src/03_model_training.py]
+        ModelTraining --> Models[(models/*)]
+        Models --> Evaluation[src/04_evaluation.py]
+        Models --> Explainability[src/05_shap_explainability.py]
     end
 ```
 
 ---
 
-## 📂 Project Folder Structure
+## 📂 Repository Structure
 
 ```
-fraud-detection/
+FraudGuard/
+├── Dockerfile                         # Production multi-stage Docker build
+├── docker-compose.yml                 # Service orchestrator (Backend + Frontend)
+├── requirements.txt                   # Pinned Python package manifest
+├── run_all.sh                         # Execution script for ML pipeline & dev server
 │
-├── data/
-│   └── creditcard.csv                 # Raw dataset (284,807 transactions)
+├── api/                               # FastAPI Backend Service
+│   ├── main.py                        # FastAPI entrypoint, routes, & CORS configuration
+│   ├── config.py                      # Centralized environment settings
+│   ├── predictor.py                   # LRU cached loaders, prediction, & SHAP explainers
+│   ├── schemas.py                     # Strict Pydantic input validation & response models
+│   ├── health.py                      # Liveness check endpoint (GET /health)
+│   └── middleware.py                  # Request ID tracking & sanitized error handler
 │
-├── data_processed/
-│   ├── X_train.npy                    # Standardized and resampled training features
-│   ├── y_train.npy                    # Resampled training labels
-│   ├── X_test.npy                     # Scaled test features (no leakage)
-│   ├── y_test.npy                     # Original test labels
-│   └── shap_values.npy                # Precomputed SHAP value arrays
+├── frontend/                          # React + Vite Frontend Application
+│   ├── Dockerfile                     # Container manifest for React build
+│   ├── package.json                   # Frontend dependencies
+│   ├── vite.config.js                 # Vite build configuration
+│   └── src/
+│       ├── App.jsx                    # Root router & navigation layout
+│       ├── api/fraudApi.js            # Axios REST client with fallback mocks
+│       ├── components/
+│       │   ├── Navbar.jsx             # Top bar with readiness badge & theme toggle
+│       │   └── RiskResultCard.jsx     # Risk score gauge, SHAP factors, & safety steps
+│       ├── pages/
+│       │   ├── RiskAssessment.jsx     # Primary Simple/Advanced input interface
+│       │   ├── Dashboard.jsx          # Model evaluation analytics & confusion matrix
+│       │   ├── ModelInfo.jsx          # Pipeline explainability & model specifications
+│       │   ├── BatchUpload.jsx        # Vectorized CSV batch risk classification
+│       │   └── PrivacySafety.jsx      # Privacy policy & product disclaimers
+│       └── styles/
+│           ├── global.css             # Glassmorphism design tokens & typography
+│           └── components.css         # UI component styling
 │
-├── models/
-│   ├── model_lr.pkl                   # Trained Logistic Regression model
-│   ├── model_rf.pkl                   # Trained Random Forest model
-│   ├── model_xgb.pkl                  # Tuned XGBoost model (Primary)
-│   ├── model_if.pkl                   # Trained Isolation Forest model
-│   ├── scaler.pkl                     # Fitted StandardScaler (Amount & Time)
-│   ├── best_threshold.pkl             # F1-optimized classification threshold
+├── models/                            # Serialized Model Artifacts
+│   ├── model_xgb.pkl                  # Primary XGBoost Classifier
+│   ├── scaler.pkl                     # Fitted StandardScaler (Time & Amount)
+│   ├── best_threshold.pkl             # Optimal F1 threshold (0.42)
 │   ├── shap_explainer.pkl             # Serialized SHAP TreeExplainer
-│   └── feature_names.pkl              # Feature order list (Pipeline consistency)
+│   └── feature_names.pkl              # Feature order manifest (30 features)
 │
-├── outputs/
-│   ├── plots/                         # Pipeline output visualizations
-│   │   ├── eda_report.png
-│   │   ├── smote_distribution.png
-│   │   ├── model_comparison.png
-│   │   ├── evaluation_report.png
-│   │   ├── shap_summary.png
-│   │   ├── shap_importance.png
-│   │   ├── shap_waterfall_fraud.png
-│   │   └── shap_dependence.png
-│   │
-│   └── reports/
-│       └── shap_force_plot.html       # Interactive force plot for frontend
-│
-├── notebooks/
-│   └── exploration.ipynb              # Scratchpad for exploration
+├── scripts/
+│   └── bootstrap_model.py             # Automatic model artifact generator
 │
 ├── src/                               # Offline ML Pipeline Scripts
-│   ├── 01_eda.py                      # Exploratory Data Analysis & stats
-│   ├── 02_preprocessing.py            # Train/Test splits & SMOTE resampling
-│   ├── 03_model_training.py           # Model training and comparison
-│   ├── 04_evaluation.py               # Threshold optimization & financial savings
-│   ├── 05_shap_explainability.py      # SHAP explainability calculations
-│   └── utils.py                       # Directory & emoji-formatted logging utils
+│   ├── 01_eda.py                      # Exploratory Data Analysis & visual reporting
+│   ├── 02_preprocessing.py            # Stratified train-test split & SMOTE resampling
+│   ├── 03_model_training.py           # Model comparison (XGB, RF, LR, Isolation Forest)
+│   ├── 04_evaluation.py               # Precision-Recall threshold sweep & business cost math
+│   └── 05_shap_explainability.py      # SHAP beeswarm, waterfall, & force plots
 │
-├── api/                               # FastAPI Backend Application
-│   ├── main.py                        # REST App entrypoint & CORS middleware
-│   ├── predictor.py                   # LRU Cached loaders, predict & explain logic
-│   ├── schemas.py                     # Pydantic Request/Response models
-│   ├── health.py                      # Healthcheck GET route
-│   └── middleware.py                  # Logger and exception catcher middleware
-│
-├── app/                               # Streamlit Frontend Application
-│   ├── 06_app.py                      # Main UI dashboard and page tabs
-│   ├── api_client.py                  # API endpoints client handler
-│   ├── components.py                  # UI gauges, metric cards, and Plotly charts
-│   ├── styles.css                     # Premium Glassmorphic stylesheet
-│   └── assets/                        # Static UI assets
-│
-├── tests/                             # Pytest Suite
-│   ├── test_api.py                    # API client and schemas tests
-│   └── test_predictor.py              # Preprocessing & inference unit tests
-│
-├── logs/                              # Execution logs
-│
-├── .env                               # Port configuration settings
-├── .gitignore                         # Git untracked registry
-├── Dockerfile                         # Multi-stage image build file
-├── docker-compose.yml                 # Service orchestrator (FastAPI + Streamlit)
-├── requirements.txt                   # Dependency manifests (pinned)
-├── README.md                          # Documentation
-└── run_all.sh                         # Master pipeline bash runner
+└── tests/                             # Comprehensive Test Suite
+    ├── test_api.py                    # API client & route tests
+    ├── test_predictor.py              # Preprocessing & prediction unit tests
+    └── test_validation.py             # Input edge case validation (NaN, Infinity, negative values)
 ```
-
----
-
-## ⚡ Setup & Execution
-
-### Prerequisites
-- Python 3.11+
-- Virtual environment tool (conda, virtualenv, venv)
-- Docker & Docker Compose (optional for containerized deployment)
-
-### 1. Local Execution (Recommended for Pipeline Training)
-
-#### Clone the Project & Create Environment:
-```bash
-# Navigate to directory
-cd /Users/sidhusingh/Developer/Fraud
-
-# Create virtual environment
-python3 -m venv venv
-source venv/bin/activate
-
-# Install dependencies
-pip install -r requirements.txt
-```
-
-#### Run the Entire Pipeline and Dashboard:
-The custom master bash runner will automate the dataset execution, training, and threshold configurations:
-```bash
-chmod +x run_all.sh
-./run_all.sh
-```
-
-#### Start FastAPI Backend Individually:
-If you want to run the REST API server:
-```bash
-python api/main.py
-```
-The interactive Swagger API documentation will be available at: `http://localhost:8000/docs`
-
-#### Start Streamlit Dashboard Individually:
-```bash
-streamlit run app/06_app.py
-```
-View the dashboard in your browser at: `http://localhost:8501`
-
----
-
-### 2. Docker Execution (Production Deployment)
-
-To build and run the backend and frontend services inside isolated containers:
-```bash
-# Build and run containers in background
-docker-compose up --build -d
-
-# Check running container statuses
-docker-compose ps
-```
-
-The Streamlit portal will be accessible at: `http://localhost:8501`  
-The FastAPI REST API will be accessible at: `http://localhost:8000`
 
 ---
 
 ## 📈 Model Performance & Evaluation Results
 
-The models were trained and compared on the test split. Models were selected based on **PR-AUC (Precision-Recall Area Under Curve)** due to extreme class imbalance (99.8% Legitimate / 0.17% Fraud).
+Models were evaluated on a holdout test split of **56,962 transactions** (containing **98 fraud cases**). Selection prioritized **PR-AUC (Precision-Recall Area Under Curve)** due to extreme class imbalance.
 
 | Model | PR-AUC (Primary) | ROC-AUC | Recall | Precision | F1-Score |
 | :--- | :---: | :---: | :---: | :---: | :---: |
-| **XGBoost (Selected Primary)** | **0.8651** | **0.9782** | **0.8265** | **0.8526** | **0.8394** |
-| Random Forest | 0.8492 | 0.9654 | 0.8061 | 0.8404 | 0.8229 |
-| Logistic Regression | 0.7431 | 0.9610 | 0.8980 | 0.0573 | 0.1077 |
-| Isolation Forest (Unsupervised) | 0.2810 | 0.8710 | 0.3878 | 0.2088 | 0.2714 |
+| **XGBoost (Primary Model)** | **0.8449** | **0.9770** | **87.76%** | **38.05%** | **0.8144** |
+| Random Forest | 0.8492 | 0.9654 | 80.61% | 84.04% | 0.8229 |
+| Logistic Regression | 0.7431 | 0.9610 | 89.80% | 5.73% | 0.1077 |
+| Isolation Forest (Unsupervised) | 0.2810 | 0.8710 | 38.78% | 20.88% | 0.2714 |
 
-*Note: Accuracy is strictly omitted as a selection metric since an trivial model predicting 'Legitimate' for all inputs achieves 99.82% accuracy, completely failing to detect any fraud cases.*
-
----
-
-## 💼 Business Impact & Savings
-
-Tuning the classification decision threshold allows banks to align machine learning outputs with concrete business costs. We utilize standard retail banking cost assumptions:
-- **Cost of a missed fraud transaction (False Negative):** **$122.00** (average fraud transaction value loss)
-- **Friction cost of blocking a legitimate card (False Positive):** **$2.00** (customer service verification cost + customer annoyance)
-
-### Financial Impact Metrics (Tuned vs. Default)
-At the F1-optimized threshold of **`0.42`** (tuned from the validation set):
-- **Fraud Prevented:** **80.9% of total fraud cases** in the test set.
-- **Financial Loss Prevented:** **$9,882.00**
-- **False Alarm Friction Cost:** **$924.00**
-- **Net Business Savings:** **$8,958.00**
-- **Savings Increase:** **+$1,234.00** compared to deploying the model at the default threshold of `0.50`.
+*Note: Accuracy is strictly excluded as a selection metric because a trivial baseline model predicting all transactions as 'Legitimate' achieves 99.83% accuracy while failing to catch a single fraud case.*
 
 ---
 
-## 🛠 Technical Decisions & Architecture Justifications
+## 💼 Business Cost & Threshold Optimization
 
-1. **Decoupled Client-Server Layout:** The Streamlit frontend connects with the FastAPI backend using standard HTTP client calls. This enforces clean segregation of concerns, prevents unauthorized client access to model pickles, and mirrors a realistic engineering environment.
-2. **Resampling Applied ONLY to Training Data:** Applying SMOTE before the train-test split causes data leakage because synthetic data points are created based on the properties of the entire dataset. To prevent optimistic evaluation bias, train-test splitting is executed first.
-3. **Scaling Restricted to Time and Amount:** Standardizing anonymous PCA variables `V1-V28` degrades predictive performance because PCA values are already centered and normalized. Only the raw inputs (`Time`, `Amount`) are passed to `StandardScaler`.
-4. **LRU Caching on API Startup:** Model checkpoints, scalers, and threshold metrics are read from disk during application startup and cached using Python's `@lru_cache`. This reduces request-response latency to single-digit milliseconds.
-5. **Plotly Integration over Matplotlib in Streamlit:** Plotly charts are interactive, responsive, and render client-side, whereas Matplotlib prints static PNG images that degrade UI look and feel.
+Standard models default to a 0.50 threshold. Because missing a fraud transaction (**False Negative**) incurs a cost (~**$122.00**) far greater than blocking a legitimate customer card (**False Positive**, ~**$2.00**), FraudGuard sweeps decision thresholds to isolate the F1-score optimal threshold:
+
+* **Optimal Threshold:** **`0.42`**
+* **Fraud Prevented:** **87.8% of total fraud cases** in test split.
+* **Financial Loss Prevented:** **$10,492.00**
+* **False Alarm Friction Cost:** **$280.00**
+* **Net Business Savings:** **$10,212.00**
 
 ---
 
 ## 🔌 API Documentation
 
-### 1. Health Status
+### 1. Service Liveness Check
 `GET /health`
-- **Description:** Verifies that the API service and its dependencies are online.
-- **Response:**
 ```json
 {
   "status": "healthy"
 }
 ```
 
-### 2. Predict Transaction Anomaly
-`POST /predict`
-- **Request Body:** Input transaction feature vector (Amount, Time, and V1 to V28).
-- **Response:**
+### 2. Service Readiness Probe
+`GET /ready`
 ```json
 {
-  "prediction": "FRAUD",
-  "fraud_probability": 0.91,
-  "threshold": 0.42,
-  "risk_level": "VERY HIGH"
+  "status": "ready",
+  "model_loaded": true,
+  "artifacts_valid": true,
+  "artifacts_status": {
+    "model_xgb.pkl": true,
+    "scaler.pkl": true,
+    "best_threshold.pkl": true,
+    "shap_explainer.pkl": true,
+    "feature_names.pkl": true
+  }
 }
 ```
 
-### 3. Retrieve Model Explanation
-`POST /explain`
-- **Request Body:** Input transaction feature vector.
-- **Response:**
+### 3. Public Model Metadata
+`GET /model-info`
 ```json
 {
-  "base_value": -4.12,
-  "top_features": [
+  "model": "XGBoost",
+  "model_version": "xgb-v1.0",
+  "explainability": "SHAP TreeExplainer",
+  "feature_count": 30,
+  "threshold": 0.42,
+  "calibration_note": "Score represents raw model score derived from dataset training patterns."
+}
+```
+
+### 4. Transaction Risk Assessment
+`POST /predict`
+* **Request Body:**
+```json
+{
+  "Time": 11700.0,
+  "Amount": 350.00,
+  "V1": -1.85, "V2": 2.15, "V3": -3.10, "V4": 3.45, "V5": -1.95,
+  "V6": -0.85, "V7": -3.20, "V8": 0.95, "V9": -2.15, "V10": -3.80,
+  "V11": 2.95, "V12": -3.90, "V13": -0.45, "V14": -4.25, "V15": -0.35,
+  "V16": -2.85, "V17": -3.80, "V18": -1.95, "V19": 0.85, "V20": 0.45,
+  "V21": 0.65, "V22": 0.15, "V23": -0.25, "V24": 0.12, "V25": 0.35,
+  "V26": 0.45, "V27": 0.85, "V28": 0.32
+}
+```
+* **Response:**
+```json
+{
+  "prediction": "FRAUD",
+  "model_assessment": "Potentially suspicious transaction pattern detected",
+  "risk_score": 84,
+  "risk_level": "HIGH",
+  "model_probability": 0.847,
+  "threshold": 0.42,
+  "model_version": "xgb-v1.0",
+  "explanation_factors": [
     {
-      "feature": "V14",
-      "shap_value": 0.81
+      "factor": "V14",
+      "impact": "high",
+      "direction": "increases_risk",
+      "description": "Transaction behavior pattern feature 'V14' contributed to the model score"
+    },
+    {
+      "factor": "V17",
+      "impact": "high",
+      "direction": "increases_risk",
+      "description": "Transaction behavior pattern feature 'V17' contributed to the model score"
+    },
+    {
+      "factor": "Amount",
+      "impact": "medium",
+      "direction": "increases_risk",
+      "description": "Transaction amount-related characteristics contributed to the score assessment"
     }
   ],
+  "fraud_probability": 0.847,
+  "is_fraud": true,
+  "probability": 0.847,
   "shap_values": {
-    "Time": -0.12,
-    "Amount": 0.05,
-    "V1": -0.02,
-    "V2": 0.04
-    // ... complete V1-V28 map
+    "V14": -2.85,
+    "V17": -2.10,
+    "Amount": 0.88
   }
 }
 ```
 
 ---
 
-## 💬 Campus Placement Prep: 5 Interview Questions & Answers
+## ⚡ Quick Start & Deployment
 
-### Q1: Why did you prioritize PR-AUC over ROC-AUC for this project?
-**Answer:** In highly imbalanced datasets (0.17% fraud), ROC-AUC can be misleadingly optimistic because it utilizes the False Positive Rate (FPR = FP / (FP + TN)). Since legitimate transactions (TN) make up 99.82% of the dataset, the denominator is massive, keeping the FPR artificially close to zero. This results in high ROC-AUC scores even if the model predicts hundreds of false positives. Precision-Recall AUC (PR-AUC) focuses on Precision (TP / (TP + FP)) and Recall (TP / (TP + FN)), evaluating model capability directly on the minority class without being diluted by the large number of true negatives.
+### 1. Run with Docker Compose (Recommended)
+```bash
+# Clone repository
+git clone https://github.com/rajputsidhu/FraudGuard.git
+cd FraudGuard
 
-### Q2: What is the risk of applying SMOTE to the entire dataset before doing train-test split?
-**Answer:** Applying SMOTE before splitting the data leads to severe **Data Leakage**. SMOTE synthesizes new data points using the K-Nearest Neighbors of the minority class. If applied beforehand, the synthetic samples in the training set will be constructed using information from data points that end up in the test set. This leaks future test information directly into the training cycle, inflating evaluation metrics (optimism bias) while performing poorly on actual production data.
+# Build and start services in background
+docker-compose up --build -d
 
-### Q3: Why did you tune the decision threshold instead of using the default 0.50?
-**Answer:** The default threshold of 0.50 assumes that classification errors are symmetric. In fraud detection, the costs are extremely asymmetric: missing a fraud transaction (False Negative) costs the bank the average value of the transaction (e.g., $122), while incorrectly blocking a legitimate transaction (False Positive) only causes minor customer friction (e.g., $2). By sweeping thresholds, we find the exact probability threshold (0.42) that maximizes the F1-score and minimizes financial loss, resulting in significant net business savings over the default 0.50 threshold.
-
-### Q4: Explain the difference between SHAP and traditional feature importance in XGBoost.
-**Answer:** Traditional XGBoost feature importance (like gain, frequency, or cover) provides a **global explanation**; it tells you which features are most useful across the entire dataset on average. However, it cannot explain *individual* predictions and can be biased toward continuous features. **SHAP (SHapley Additive exPlanations)** is based on cooperative game theory and provides both **global** and **local explanations**. For any single transaction, SHAP calculates the exact additive contribution of each feature to that specific prediction's score, explaining *why* the model made that decision.
-
-### Q5: How does your Docker setup handle dependency management between backend and frontend?
-**Answer:** We configure the system in `docker-compose.yml` using Docker's multi-stage targets and healthchecks. The backend image exposes a `/health` REST endpoint. In the Compose file, we define a service-level dependency using:
-```yaml
-depends_on:
-  backend:
-    condition: service_healthy
+# Verify container statuses
+docker-compose ps
 ```
-This guarantees that the Streamlit frontend service does not start running until the FastAPI backend is fully operational and has warmed its model cache, preventing frontend connection failures on startup.
+* **Frontend Web Application:** [http://localhost:5173](http://localhost:5173)
+* **Backend FastAPI REST API:** [http://localhost:8000](http://localhost:8000)
+* **Interactive Swagger Docs:** [http://localhost:8000/docs](http://localhost:8000/docs)
+
+### 2. Local Manual Setup
+
+#### Backend Setup:
+```bash
+# Create and activate virtual environment
+python3 -m venv venv
+source venv/bin/activate
+
+# Install requirements
+pip install -r requirements.txt
+
+# Bootstrap model artifacts if models/ is empty
+python scripts/bootstrap_model.py
+
+# Run FastAPI backend
+python api/main.py
+```
+
+#### Frontend Setup:
+```bash
+cd frontend
+npm install
+npm run dev
+```
+
+### 3. Run Test Suite
+```bash
+python -m pytest tests/ -v
+```
 
 ---
 
-## 📝 Resume Bullet Point
+## 🔒 Privacy & Safety Guarantee
 
-> "Built an end-to-end Credit Card Fraud Detection platform on 284,807 transactions with 99.8% class imbalance. Applied SMOTE resampling, trained and compared multiple machine learning models, selected XGBoost using PR-AUC, optimized decision thresholds using precision-recall analysis, integrated SHAP explainability, exposed predictions through FastAPI, and deployed an interactive Streamlit dashboard using Docker."
+FraudGuard is built with privacy-by-design:
+1. **Zero Credential Requirement:** Never asks for or accepts card numbers, CVVs, PINs, OTPs, passwords, or banking logins.
+2. **Zero Storage:** Transactions evaluated via the API are processed in-memory for inference and immediately discarded.
+3. **Local Storage Only:** Any browser history remains strictly in local client state and can be deleted anytime.
+
+---
+
+## ⚠️ Important Limitations & Disclaimer
+
+FraudGuard is an educational/experimental AI transaction risk assessment application and software engineering project.
+
+* **Not Bank-Grade Prevention:** FraudGuard does not perform real-world payment authorization, declines, or banking security checks.
+* **Dataset Dependencies:** Trained on benchmark credit card transaction datasets; real-world fraud patterns evolve dynamically.
+* **No Financial/Legal Advice:** Model outputs are machine learning estimates and do not constitute financial or legal advice. In case of actual suspicious card activity, contact your card issuer via the official phone number on your physical card.
+
+---
+
+## 📄 License
+Distributed under the MIT License. See `LICENSE` for details.

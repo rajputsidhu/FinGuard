@@ -1,13 +1,14 @@
 import { Link, useLocation } from 'react-router-dom';
-import { ShieldCheck, Sun, Moon } from 'lucide-react';
+import { ShieldCheck, Sun, Moon, Info, ShieldAlert, Cpu, Layers } from 'lucide-react';
 import { useState, useEffect } from 'react';
+import { getReadiness } from '../api/fraudApi';
 
 const Navbar = () => {
   const location = useLocation();
   const [theme, setTheme] = useState(() => {
     return localStorage.getItem('theme') || 'dark';
   });
-  const [hovered, setHovered] = useState(false);
+  const [status, setStatus] = useState({ isReady: true, label: 'ML Ready' });
 
   useEffect(() => {
     if (theme === 'light') {
@@ -16,6 +17,18 @@ const Navbar = () => {
       document.body.classList.remove('light-theme');
     }
   }, [theme]);
+
+  useEffect(() => {
+    const checkReady = async () => {
+      const res = await getReadiness();
+      if (res.data && res.data.artifacts_valid) {
+        setStatus({ isReady: true, label: 'ML Ready (v1.0)' });
+      } else {
+        setStatus({ isReady: false, label: 'Demo / Fallback Mode' });
+      }
+    };
+    checkReady();
+  }, []);
 
   const toggleTheme = () => {
     setTheme(prev => {
@@ -28,8 +41,15 @@ const Navbar = () => {
   return (
     <nav className="navbar">
       <div className="nav-left">
-        <ShieldCheck color="var(--primary)" size={28} />
-        <span className="nav-brand">FraudGuard</span>
+        <Link to="/" className="brand-logo-link">
+          <div className="brand-icon-wrapper">
+            <ShieldCheck color="#3b82f6" size={26} />
+          </div>
+          <div className="brand-text-block">
+            <span className="nav-brand">FraudGuard</span>
+            <span className="nav-subtitle">AI Risk Assessment</span>
+          </div>
+        </Link>
       </div>
       
       <div className="nav-center">
@@ -37,49 +57,51 @@ const Navbar = () => {
           to="/" 
           className={`nav-link ${location.pathname === '/' ? 'active' : ''}`}
         >
-          Dashboard
+          Check Transaction
         </Link>
         <Link 
-          to="/live-monitor" 
-          className={`nav-link ${location.pathname === '/live-monitor' ? 'active' : ''}`}
+          to="/dashboard" 
+          className={`nav-link ${location.pathname === '/dashboard' ? 'active' : ''}`}
         >
-          Live Monitor
-        </Link>
-        <Link 
-          to="/model-stats" 
-          className={`nav-link ${location.pathname === '/model-stats' ? 'active' : ''}`}
-        >
-          Model Stats
+          Analytics & Stats
         </Link>
         <Link 
           to="/batch-upload" 
           className={`nav-link ${location.pathname === '/batch-upload' ? 'active' : ''}`}
         >
-          Batch Upload
+          Batch CSV
+        </Link>
+        <Link 
+          to="/how-it-works" 
+          className={`nav-link ${location.pathname === '/how-it-works' ? 'active' : ''}`}
+        >
+          How It Works
+        </Link>
+        <Link 
+          to="/privacy" 
+          className={`nav-link ${location.pathname === '/privacy' ? 'active' : ''}`}
+        >
+          Privacy & Safety
         </Link>
       </div>
       
       <div className="nav-right">
         <button 
           onClick={toggleTheme} 
-          onMouseEnter={() => setHovered(true)}
-          onMouseLeave={() => setHovered(false)}
           className="nav-theme-btn"
-          style={{ 
-            transform: hovered ? 'scale(1.08)' : 'scale(1)'
-          }} 
           title={theme === 'dark' ? 'Switch to Light Mode' : 'Switch to Dark Mode'}
           aria-label="Toggle Theme"
         >
           {theme === 'dark' ? (
-            <Sun size={18} color="var(--primary)" />
+            <Sun size={18} color="#f59e0b" />
           ) : (
-            <Moon size={18} color="var(--primary)" />
+            <Moon size={18} color="#3b82f6" />
           )}
         </button>
-        <div className="nav-status-badge">
+
+        <div className={`nav-status-badge ${status.isReady ? 'status-online' : 'status-fallback'}`}>
           <span className="nav-status-dot"></span>
-          Model Active
+          <span>{status.label}</span>
         </div>
       </div>
     </nav>
