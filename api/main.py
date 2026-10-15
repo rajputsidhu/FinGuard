@@ -14,7 +14,8 @@ from api.schemas import (
     PredictResponse, 
     ExplainResponse,
     ModelInfoResponse,
-    ReadinessResponse
+    ReadinessResponse,
+    ModelStatsResponse
 )
 from api.middleware import LoggingAndExceptionMiddleware
 from api.predictor import (
@@ -26,7 +27,9 @@ from api.predictor import (
     get_threshold,
     get_feature_names,
     get_shap_explainer,
-    validate_model_artifacts
+    validate_model_artifacts,
+    get_metadata,
+    get_evaluation_report
 )
 
 # Initialize logger
@@ -34,8 +37,8 @@ logger = setup_logger("api_main", "logs/api.log")
 
 # Create FastAPI app
 app = FastAPI(
-    title="FraudGuard AI Risk Assessment API",
-    description="Public AI-powered credit card transaction risk assessment and SHAP explainability service.",
+    title="FinGuard AI Risk Assessment API",
+    description="Explainable machine learning platform for transaction fraud detection and financial risk analytics.",
     version="1.0.0"
 )
 
@@ -68,10 +71,16 @@ async def ready_check():
     """
     validation = validate_model_artifacts()
     is_ready = validation["artifacts_valid"]
+    is_synth = validation.get("is_synthetic", False)
+    dataset_type = validation.get("dataset_type", "synthetic_demonstration" if is_synth else "genuine_creditcard")
+    status_label = "demo" if (is_ready and is_synth) else ("ready" if is_ready else "not_ready")
+    
     return ReadinessResponse(
-        status="ready" if is_ready else "not_ready",
+        status=status_label,
         model_loaded=is_ready,
         artifacts_valid=is_ready,
+        is_synthetic=is_synth,
+        dataset_type=dataset_type,
         artifacts_status=validation["artifacts_status"]
     )
 
@@ -86,17 +95,20 @@ async def model_info():
     """
     Returns public model metadata and decision threshold information without exposing internal secrets.
     """
+    meta = get_metadata()
     try:
         thresh = get_threshold()
     except Exception:
-        thresh = 0.42
+        thresh = meta.get("decision_threshold", 0.42)
         
     return ModelInfoResponse(
-        model="XGBoost",
-        model_version=settings.MODEL_VERSION,
-        explainability="SHAP TreeExplainer",
-        feature_count=30,
-        threshold=round(thresh, 4)
+        model=meta.get("model", "XGBoost"),
+        model_version=meta.get("model_version", settings.MODEL_VERSION),
+        explainability=meta.get("explainability", "SHAP TreeExplainer"),
+        feature_count=meta.get("feature_count", 30),
+        threshold=round(thresh, 4),
+        dataset_type=meta.get("dataset_type", "Synthetic Demonstration Dataset"),
+        is_synthetic=meta.get("is_synthetic", True)
     )
 
 # Warm Cache on Startup
@@ -135,19 +147,40 @@ async def startup_event():
 )
 async def model_stats():
     """
-    Returns evaluation metrics of the trained XGBoost model on the test dataset split.
+    Returns verified evaluation metrics of the trained XGBoost model from evaluation_report.json.
     """
+    report = get_evaluation_report()
+    if report is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Evaluation report unavailable. Please run the model evaluation script first."
+        )
+    
+    # Return genuine evaluation metrics with backward compatible structure
+    metrics = report.get("metrics", {})
     return {
-        "model": "XGBoost",
-        "model_version": settings.MODEL_VERSION,
+        "status": "available",
+        "model": report.get("model_name", "XGBoost"),
+        "model_version": report.get("model_version", settings.MODEL_VERSION),
+        "dataset_type": report.get("dataset_type", "synthetic_demonstration"),
+        "is_synthetic": report.get("is_synthetic", True),
+        "evaluation_timestamp": report.get("evaluation_timestamp"),
+        "decision_threshold": report.get("decision_threshold", 0.42),
+        "test_sample_count": report.get("test_sample_count", 0),
+        "test_fraud_count": report.get("test_fraud_count", 0),
+        "metrics": metrics,
+        "confusion_matrix": report.get("confusion_matrix", {}),
         "dataset_evaluation": {
-            "roc_auc": 0.9770,
-            "pr_auc": 0.8449,
-            "recall": 0.8776,
-            "precision": 0.3805,
-            "f1": 0.8144
+            "roc_auc": metrics.get("roc_auc", 0.0),
+            "pr_auc": metrics.get("pr_auc", 0.0),
+            "recall": metrics.get("recall", 0.0),
+            "precision": metrics.get("precision", 0.0),
+            "f1": metrics.get("f1_score", 0.0)
         },
-        "disclaimer": "Metrics represent test set evaluation performance on historical dataset. Not a guarantee of real-world bank fraud prevention."
+        "disclaimer": report.get(
+            "disclaimer", 
+            "Metrics reflect holdout test set evaluation on historical data."
+        )
     }
 
 @app.get(
@@ -246,12 +279,35 @@ async def predict_file(file: UploadFile = File(...)):
         )
         
     try:
-        # Load CSV into DataFrame
-        df = pd.read_csv(file.file)
+        # Read content and enforce file size boundary (Phase 18)
+        content = await file.read()
+        if len(content) > settings.MAX_UPLOAD_SIZE_BYTES:
+            max_mb = settings.MAX_UPLOAD_SIZE_BYTES / (1024 * 1024)
+            raise HTTPException(
+                status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+                detail=f"File exceeds maximum allowed upload size of {max_mb:.0f} MB."
+            )
+            
+        import io
+        try:
+            df = pd.read_csv(io.BytesIO(content))
+        except Exception as parse_err:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail=f"Malformed CSV file: {str(parse_err)}"
+            )
         
         # Call batch predictor
         results = make_batch_prediction(df)
         return results
+    except FileNotFoundError as e:
+        logger.error(f"✖ Batch prediction failed due to missing artifacts: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Model is not ready. Please run the model training pipeline first."
+        )
+    except HTTPException:
+        raise
     except ValueError as e:
         logger.error(f"✖ Batch prediction validation failed: {str(e)}")
         raise HTTPException(

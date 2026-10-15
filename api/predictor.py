@@ -7,7 +7,7 @@ if not hasattr(np, "int"):
 import pandas as pd
 import joblib
 from functools import lru_cache
-from typing import Dict, Any, List
+from typing import Dict, Any, List, Optional
 
 # Add the project root to python path for clean imports
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -23,6 +23,9 @@ THRESHOLD_PATH = "models/best_threshold.pkl"
 EXPLAINER_PATH = "models/shap_explainer.pkl"
 FEATURES_PATH = "models/feature_names.pkl"
 
+EVALUATION_REPORT_PATH = "models/evaluation_report.json"
+METADATA_PATH = "models/metadata.json"
+
 def validate_model_artifacts() -> Dict[str, Any]:
     """
     Validates presence of all required model artifacts on disk.
@@ -33,18 +36,60 @@ def validate_model_artifacts() -> Dict[str, Any]:
         "scaler.pkl": os.path.exists(SCALER_PATH),
         "best_threshold.pkl": os.path.exists(THRESHOLD_PATH),
         "shap_explainer.pkl": os.path.exists(EXPLAINER_PATH),
-        "feature_names.pkl": os.path.exists(FEATURES_PATH)
+        "feature_names.pkl": os.path.exists(FEATURES_PATH),
+        "evaluation_report.json": os.path.exists(EVALUATION_REPORT_PATH),
+        "metadata.json": os.path.exists(METADATA_PATH)
     }
-    # Threshold is technically optional (has fallback 0.5), but core model artifacts are required
     required_valid = (
         status_dict["model_xgb.pkl"] and
         status_dict["scaler.pkl"] and
         status_dict["feature_names.pkl"]
     )
+    
+    # Check if model is synthetic/demonstration mode
+    is_synthetic = False
+    dataset_type = "genuine_creditcard"
+    if os.path.exists(METADATA_PATH):
+        try:
+            import json
+            with open(METADATA_PATH, "r") as f:
+                meta = json.load(f)
+                is_synthetic = meta.get("is_synthetic", False)
+                dataset_type = meta.get("dataset_type", "synthetic_demonstration" if is_synthetic else "genuine_creditcard")
+        except Exception:
+            pass
+            
     return {
         "artifacts_valid": required_valid,
-        "artifacts_status": status_dict
+        "artifacts_status": status_dict,
+        "is_synthetic": is_synthetic,
+        "dataset_type": dataset_type
     }
+
+@lru_cache(maxsize=1)
+def get_metadata() -> Dict[str, Any]:
+    """Loads and caches model metadata from disk."""
+    if not os.path.exists(METADATA_PATH):
+        return {
+            "model": "XGBoost",
+            "model_version": "xgb-v1.0",
+            "feature_count": 30,
+            "threshold": 0.42,
+            "is_synthetic": True,
+            "dataset_type": "Synthetic Demonstration Dataset"
+        }
+    import json
+    with open(METADATA_PATH, "r") as f:
+        return json.load(f)
+
+@lru_cache(maxsize=1)
+def get_evaluation_report() -> Optional[Dict[str, Any]]:
+    """Loads and caches evaluation report from disk."""
+    if not os.path.exists(EVALUATION_REPORT_PATH):
+        return None
+    import json
+    with open(EVALUATION_REPORT_PATH, "r") as f:
+        return json.load(f)
 
 # ----------------------------------------------------
 # LRU Cache Model Loaders to prevent file I/O overhead
@@ -115,8 +160,8 @@ def preprocess_input(transaction: TransactionInput) -> np.ndarray:
     amount_idx = feature_names.index('Amount')
     
     # Transform only Time and Amount
-    time_val = input_dict['Time']
-    amount_val = input_dict['Amount']
+    time_val = float(input_dict['Time'])
+    amount_val = float(input_dict['Amount'])
     
     scaled_values = scaler.transform([[time_val, amount_val]])
     
@@ -284,6 +329,12 @@ def make_batch_prediction(df: pd.DataFrame) -> dict:
     Returns:
         A dictionary containing summary metrics and list of individual transaction predictions.
     """
+    if df is None or len(df) == 0:
+        raise ValueError("Uploaded CSV is empty. Please provide a file with valid transaction rows.")
+        
+    if len(df) > 10000:
+        raise ValueError(f"Batch size ({len(df):,} rows) exceeds maximum allowed limit of 10,000 transactions.")
+
     xgb = get_xgb_model()
     scaler = get_scaler()
     threshold = get_threshold()
@@ -296,8 +347,29 @@ def make_batch_prediction(df: pd.DataFrame) -> dict:
         raise ValueError(f"CSV is missing required features: {', '.join(missing_cols)}")
         
     # Keep only required columns and align index
-    df_aligned = df[required_cols].reset_index(drop=True)
+    df_aligned = df[required_cols].copy().reset_index(drop=True)
     
+    # Validate numeric types
+    for col in required_cols:
+        if not pd.api.types.is_numeric_dtype(df_aligned[col]):
+            try:
+                df_aligned[col] = pd.to_numeric(df_aligned[col])
+            except Exception:
+                raise ValueError(f"Column '{col}' contains non-numeric values.")
+                
+    if df_aligned.isna().any().any():
+        raise ValueError("CSV contains missing (NaN) or null values in required transaction columns.")
+        
+    matrix_vals = df_aligned.to_numpy(dtype=float)
+    if not np.isfinite(matrix_vals).all():
+        raise ValueError("CSV contains non-finite (NaN or Infinity) numeric values.")
+        
+    if (df_aligned['Amount'] < 0).any():
+        raise ValueError("CSV contains negative transaction Amount values.")
+        
+    if (df_aligned['Time'] < 0).any():
+        raise ValueError("CSV contains negative Time values.")
+        
     # 2. Scale Time and Amount
     df_scaled = df_aligned.copy()
     scaled_values = scaler.transform(df_aligned[['Time', 'Amount']])

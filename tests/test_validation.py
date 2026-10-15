@@ -55,3 +55,29 @@ def test_validation_handles_large_values():
     payload["Amount"] = 1_500_000.0
     response = client.post("/predict", json=payload)
     assert response.status_code == 200
+
+def test_validation_rejects_oversized_csv_payload():
+    """Verifies that uploaded CSV exceeding MAX_UPLOAD_SIZE_BYTES triggers HTTP 413."""
+    from unittest.mock import patch
+    from api.config import settings
+    
+    with patch.object(settings, "MAX_UPLOAD_SIZE_BYTES", 50):
+        oversized_content = "Time,Amount,V1\n0.0,10.0,0.5\n" * 5
+        files = {"file": ("oversized.csv", oversized_content, "text/csv")}
+        response = client.post("/predict-file", files=files)
+        assert response.status_code == 413
+        assert "exceeds maximum allowed upload size" in response.json()["detail"]
+
+
+def test_validation_rejects_excessive_row_count():
+    """Verifies that uploaded CSV exceeding max rows triggers HTTP 422."""
+    headers = "Time,Amount," + ",".join([f"V{i}" for i in range(1, 29)]) + "\n"
+    # Create 10,005 rows (limit is 10,000)
+    row = "0.0,10.0," + ",".join(["0.0"] * 28) + "\n"
+    excessive_content = headers + (row * 10_005)
+    files = {"file": ("too_many_rows.csv", excessive_content, "text/csv")}
+    response = client.post("/predict-file", files=files)
+    assert response.status_code == 422
+    assert "exceeds maximum allowed limit" in response.json()["detail"]
+
+

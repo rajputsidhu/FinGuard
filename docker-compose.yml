@@ -2,36 +2,38 @@ services:
   backend:
     build:
       context: .
-      target: backend
-    container_name: fraud_backend
+    container_name: finguard_backend
     ports:
       - "8000:8000"
     volumes:
       - ./models:/app/models
-      - ./data_processed:/app/data_processed
-      - ./outputs:/app/outputs
       - ./logs:/app/logs
+      - ./outputs:/app/outputs
     environment:
       - HOST=0.0.0.0
       - PORT=8000
       - ENVIRONMENT=production
       - MODEL_VERSION=xgb-v1.0
-      - CORS_ORIGINS=["http://localhost:5173","http://127.0.0.1:5173"]
+      - CORS_ORIGINS=["http://localhost:5173","http://127.0.0.1:5173","http://localhost:3000","http://localhost:8080"]
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8000/ready"]
-      interval: 10s
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 15s
       timeout: 5s
       retries: 3
-      start_period: 5s
+      start_period: 10s
+    restart: unless-stopped
 
   frontend:
     build:
       context: ./frontend
-    container_name: fraud_frontend
+      args:
+        - VITE_API_BASE_URL=http://localhost:8000
+    container_name: finguard_frontend
     ports:
-      - "5173:5173"
+      - "5173:80"
     environment:
-      - VITE_API_URL=http://localhost:8000
+      - VITE_API_BASE_URL=http://localhost:8000
     depends_on:
       backend:
         condition: service_healthy
+    restart: unless-stopped

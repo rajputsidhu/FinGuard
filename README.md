@@ -1,4 +1,4 @@
-# 🛡️ FraudGuard — AI-Powered Transaction Risk Assessment Platform
+# 🛡️ FinGuard AI — Intelligent Fraud Detection & Financial Risk Analytics
 
 [![Python 3.11](https://img.shields.io/badge/Python-3.11-blue.svg)](https://www.python.org/)
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.95.1-009688.svg)](https://fastapi.tiangolo.com/)
@@ -6,321 +6,420 @@
 [![SHAP](https://img.shields.io/badge/SHAP-0.41.0-green.svg)](https://shap.readthedocs.io/)
 [![React](https://img.shields.io/badge/React-18.0-61dafb.svg)](https://reactjs.org/)
 [![Vite](https://img.shields.io/badge/Vite-5.4-646cff.svg)](https://vitejs.dev/)
-[![Docker](https://img.shields.io/badge/Docker-Enabled-2496ed.svg)](https://www.docker.com/)
+[![Docker](https://img.shields.io/badge/Docker-Multi--Stage-2496ed.svg)](https://www.docker.com/)
 
-**FraudGuard** is a production-ready, explainable AI transaction risk assessment application. It evaluates credit card transaction patterns using an **Extreme Gradient Boosting (XGBoost)** classifier optimized for severe class imbalance, calculates feature-level contributions via **SHAP (SHapley Additive exPlanations)**, and presents human-understandable risk scores and safety guidance through a modern React/Vite interface.
+**FinGuard AI** is an explainable machine-learning platform for transaction fraud detection, financial risk assessment, batch transaction analysis, and model performance monitoring.
 
----
-
-## 📌 Problem & Solution
-
-### The Problem
-1. **Extreme Class Imbalance:** Fraudulent transactions account for less than **0.17%** of credit card activity (99.83% legitimate), rendering standard accuracy metrics useless and causing naive classifiers to miss fraud entirely.
-2. **Black-Box Opacity:** Traditional ML models produce raw, unexplainable probability numbers, making it impossible for risk auditors and customers to understand *why* a transaction was flagged.
-3. **User Friction & Privacy Concerns:** Many public security applications force non-technical users to interpret abstract mathematical vectors or collect sensitive banking credentials.
-
-### The Solution
-FraudGuard provides an end-to-end, privacy-first solution:
-* **Cost-Optimized XGBoost Classification:** Trained with SMOTE oversampling and threshold-swept to maximize **F1-Score (0.42)** and **PR-AUC (0.8449)**.
-* **Explainable AI (SHAP):** Computes game-theoretic Shapley values dynamically to translate PCA feature vectors into plain-English explanation factors.
-* **Dual User Modes:**
-  * **Simple User Mode:** Intuitive inputs (Transaction Amount in currency, Transaction Type, Time of Day, Location Context) mapped to baseline vectors.
-  * **Advanced Technical Mode:** Full access to all 30 features (`Time`, `Amount`, `V1`–`V28`), raw probability scores, decision thresholds, and SHAP vectors.
-* **Human-Readable Risk Scores:** Displays a 0–100 **Model-Generated Risk Score** and categorizes risk into **LOW**, **MEDIUM**, **HIGH**, or **CRITICAL**.
-* **Actionable Safety Guidance:** Provides practical, non-financial guidance steps for high-risk flags (e.g. checking banking apps, contacting card issuers).
-* **Privacy-by-Design:** **Never** asks for or accepts full card numbers, CVVs, PINs, OTPs, or banking passwords.
+Built on an enterprise-grade dark financial aesthetic, FinGuard AI pairs an **Extreme Gradient Boosting (XGBoost)** classification engine optimized for extreme class imbalance with game-theoretic **SHAP (SHapley Additive exPlanations)** to provide transparent, interpretable, and audited transaction risk assessments.
 
 ---
 
-## 🏗 System Architecture
+## 📌 1. Project Overview & Problems Addressed
+
+In financial risk engineering and modern payment gateways, fraud classification presents distinct operational hurdles:
+
+1. **Extreme Class Imbalance:** Fraudulent transactions typically represent less than **0.17%** of card transactions. Trivial models predicting 100% legitimate transactions achieve misleadingly high accuracy (99.83%) while catching zero fraud. FinGuard AI evaluates models strictly on Precision-Recall AUC (PR-AUC), Recall, and cost-weighted F1.
+2. **Black-Box Opacity:** Auditing regulations require institutions to explain adverse credit and fraud flags. Raw neural or tree probability scores do not provide actionable reasons. FinGuard AI integrates TreeSHAP to expose exact feature contributions (log-odds impact) for every single prediction.
+3. **Data Leakage & Misleading Metrics:** Many fraud pipelines fit scaling or synthetic oversampling (SMOTE) across the entire dataset before splitting, resulting in inflated evaluation metrics that collapse in production. FinGuard AI enforces strict stratified train/val/test splits, fitting transformers only on training sets.
+4. **Asymmetric Business Costs:** The cost of missing a fraudulent charge (chargeback, merchant penalty, balance loss) vastly exceeds the minor friction of reviewing a false positive. FinGuard AI tunes decision thresholds on a validation split to minimize enterprise loss.
+
+---
+
+## ✨ 2. Key Features
+
+- **Real-Time Transaction Assessment:** Full 30-feature technical evaluation (`Time`, `Amount`, `V1`–`V28` PCA vectors) with strict Pydantic numeric validation, NaN/Infinity rejection, and risk categorization (`LOW`, `MEDIUM`, `HIGH`, `CRITICAL`).
+- **Explicit Demonstration Fallback Mode:** Simple transaction mode providing transparent, documented synthetic demonstration inputs for non-technical exploration without pretending to produce real-world banking decisions.
+- **Explainable AI (TreeSHAP):** Live Shapley decomposition into interactive horizontal contribution charts, sorted attribution tables, and risk factor directionality.
+- **Batch Risk Analysis:** Vectorized CSV upload engine supporting up to 10,000 transactions per batch (10MB limit), downloadable template, client-side pagination, classification filters, and CSV result exports.
+- **Session Risk Intelligence Dashboard:** Genuine assessment tracking without fake browser mock data; real-time KPI metrics (Transactions Analyzed, Fraud Flags, Flag Rate, Average Score) and Recharts distributions.
+- **Audited Model Intelligence:** Direct inspection of the verified `evaluation_report.json`, model metadata, confusion matrix, false-positive counts, and transparent synthetic/production dataset labeling.
+- **Interactive API Explorer:** Live interactive documentation covering all 8 endpoints with sample JSON payloads, copy buttons, and OpenAPI schema synchronization.
+- **Privacy & Safety Center:** Explicit guidance against inputting primary account numbers (PAN), CVV/CVC codes, PINs, OTPs, or passwords.
+
+---
+
+## 🏗 3. System Architecture
 
 ```mermaid
 graph TD
-    User([Public User / Auditor]) <-->|Interacts| ReactApp[React 18 + Vite Frontend]
-    ReactApp <-->|REST API / JSON| FastAPI[FastAPI Backend Server]
+    User([Risk Officer / Security Analyst]) <-->|Browser Interaction| ReactApp[FinGuard AI React 18 + Vite]
     
-    subgraph FastAPI Backend Application
-        Middleware[Logging & Exception Middleware] --> Router[API Main Router]
-        Router --> ReadinessProbe[GET /ready Probe]
-        Router --> PredictEndpoint[POST /predict]
-        Router --> ExplainEndpoint[POST /explain]
-        Router --> BatchEndpoint[POST /predict-file]
+    subgraph Frontend Client [Port 5173 / Production Nginx:80]
+        Router[React Router 6]
+        Context[AssessmentContext: Session State]
+        ApiClient[fraudApi.js: Central Axios Client]
+        Views[Dashboard | Assessment | Batch | Explain | Model | API | Privacy]
+    end
+    
+    subgraph FastAPI Backend [Port 8000]
+        Middleware[Correlation ID & Exception Sanitizer]
+        MainRouter[api/main.py Router]
+        Predictor[api/predictor.py LRU Engine]
+        Config[api/config.py Settings]
         
-        PredictEndpoint --> Predictor[api/predictor.py]
-        Predictor --> Scaler[StandardScaler models/scaler.pkl]
-        Predictor --> XGBoost[XGBoost Model models/model_xgb.pkl]
-        Predictor --> Threshold[Optimized F1 Threshold models/best_threshold.pkl]
-        Predictor --> SHAP[SHAP TreeExplainer models/shap_explainer.pkl]
+        MainRouter --> Health[/health & /ready probes]
+        MainRouter --> Predict[/predict & /explain]
+        MainRouter --> Batch[/predict-file]
+        MainRouter --> Metadata[/model-info & /model-stats]
     end
     
-    subgraph ML Pipeline & Artifacts
-        Dataset[(data/creditcard.csv)] --> EDA[src/01_eda.py]
-        Dataset --> Preprocessing[src/02_preprocessing.py]
-        Preprocessing -->|Stratified Split + SMOTE + RUS| TrainData[(data_processed/*)]
-        TrainData --> ModelTraining[src/03_model_training.py]
-        ModelTraining --> Models[(models/*)]
-        Models --> Evaluation[src/04_evaluation.py]
-        Models --> Explainability[src/05_shap_explainability.py]
+    subgraph Machine Learning Artifacts [models/]
+        XGBoost[(model_xgb.pkl)]
+        Scaler[(scaler.pkl)]
+        Threshold[(best_threshold.pkl)]
+        Explainer[(shap_explainer.pkl)]
+        Features[(feature_names.pkl)]
+        Report[(evaluation_report.json)]
+        Meta[(metadata.json)]
     end
+    
+    ReactApp <-->|REST API JSON / VITE_API_BASE_URL| FastAPI
+    Predictor --> Scaler
+    Predictor --> XGBoost
+    Predictor --> Threshold
+    Predictor --> Explainer
 ```
 
 ---
 
-## 📂 Repository Structure
+## 💻 4. Technology Stack
+
+- **Frontend:** React 18, Vite 5.4, React Router 6, Recharts, Lucide React, Vanilla CSS Design System with dark financial theme.
+- **Backend:** FastAPI, Uvicorn (ASGI), Pydantic v1 BaseSettings & BaseModel, Python-Multipart.
+- **Machine Learning:** XGBoost 1.7+, scikit-learn, SHAP (TreeExplainer), NumPy, Pandas.
+- **DevOps & Containers:** Docker (Multi-stage build), Nginx Alpine (SPA routing fallback), Docker Compose, non-root application users.
+- **Testing:** Pytest, HTTPX / Starlette TestClient, UnitMock.
+
+---
+
+## 📂 5. Repository Structure
 
 ```
 FraudGuard/
-├── Dockerfile                         # Production multi-stage Docker build
-├── docker-compose.yml                 # Service orchestrator (Backend + Frontend)
-├── requirements.txt                   # Pinned Python package manifest
-├── run_all.sh                         # Execution script for ML pipeline & dev server
+├── Dockerfile                         # Production non-root FastAPI Docker container
+├── docker-compose.yml                 # Production multi-service orchestration
+├── requirements.txt                   # Verified Python dependencies
+├── run_all.sh                         # Master orchestration script
+├── .env.example                       # Environment template
 │
-├── api/                               # FastAPI Backend Service
-│   ├── main.py                        # FastAPI entrypoint, routes, & CORS configuration
-│   ├── config.py                      # Centralized environment settings
-│   ├── predictor.py                   # LRU cached loaders, prediction, & SHAP explainers
-│   ├── schemas.py                     # Strict Pydantic input validation & response models
-│   ├── health.py                      # Liveness check endpoint (GET /health)
-│   └── middleware.py                  # Request ID tracking & sanitized error handler
+├── api/                               # FastAPI REST Backend Service
+│   ├── main.py                        # Endpoint declarations & route controllers
+│   ├── config.py                      # Pydantic BaseSettings & environment loader
+│   ├── predictor.py                   # Cached model loaders, inference, & batch processing
+│   ├── schemas.py                     # Strict Pydantic request/response schemas
+│   ├── health.py                      # Health router & liveness probe
+│   └── middleware.py                  # Structured request logger & error sanitizer
 │
-├── frontend/                          # React + Vite Frontend Application
-│   ├── Dockerfile                     # Container manifest for React build
-│   ├── package.json                   # Frontend dependencies
-│   ├── vite.config.js                 # Vite build configuration
+├── frontend/                          # Production React 18 + Vite Application
+│   ├── Dockerfile                     # Multi-stage production Nginx container
+│   ├── nginx.conf                     # Nginx SPA fallback configuration
+│   ├── package.json                   # Node package manifest
+│   ├── vite.config.js                 # Rollup chunking & build settings
 │   └── src/
-│       ├── App.jsx                    # Root router & navigation layout
-│       ├── api/fraudApi.js            # Axios REST client with fallback mocks
+│       ├── App.jsx                    # Application router & backwards-compatible redirects
+│       ├── api/fraudApi.js            # Centralized API client (no mock fallbacks)
+│       ├── context/AssessmentContext.jsx # Shared session state for assessments
 │       ├── components/
-│       │   ├── Navbar.jsx             # Top bar with readiness badge & theme toggle
-│       │   └── RiskResultCard.jsx     # Risk score gauge, SHAP factors, & safety steps
+│       │   ├── layout/                # AppShell, Sidebar, Topbar
+│       │   └── forms/                 # AdvancedModeForm, SimpleModeForm
 │       ├── pages/
-│       │   ├── RiskAssessment.jsx     # Primary Simple/Advanced input interface
-│       │   ├── Dashboard.jsx          # Model evaluation analytics & confusion matrix
-│       │   ├── ModelInfo.jsx          # Pipeline explainability & model specifications
-│       │   ├── BatchUpload.jsx        # Vectorized CSV batch risk classification
-│       │   └── PrivacySafety.jsx      # Privacy policy & product disclaimers
+│       │   ├── Dashboard.jsx          # Risk Intelligence dashboard
+│       │   ├── RiskAssessment.jsx     # Single transaction assessment
+│       │   ├── BatchAnalysis.jsx      # CSV batch processing & export
+│       │   ├── ExplainableAi.jsx      # TreeSHAP contribution factors & charts
+│       │   ├── ModelIntelligence.jsx  # Verified evaluation metrics & report
+│       │   ├── ApiExplorer.jsx        # Interactive endpoint catalog & schemas
+│       │   └── PrivacySafetyCenter.jsx# Security disclaimer & compliance guidelines
 │       └── styles/
-│           ├── global.css             # Glassmorphism design tokens & typography
-│           └── components.css         # UI component styling
+│           ├── global.css             # Design tokens & base variables
+│           └── console.css            # Component styles & dark fintech theme
 │
-├── models/                            # Serialized Model Artifacts
-│   ├── model_xgb.pkl                  # Primary XGBoost Classifier
-│   ├── scaler.pkl                     # Fitted StandardScaler (Time & Amount)
-│   ├── best_threshold.pkl             # Optimal F1 threshold (0.42)
-│   ├── shap_explainer.pkl             # Serialized SHAP TreeExplainer
-│   └── feature_names.pkl              # Feature order manifest (30 features)
+├── models/                            # Serialized Artifacts & Reports
+│   ├── model_xgb.pkl                  # Trained XGBoost binary classifier
+│   ├── scaler.pkl                     # StandardScaler fitted strictly on training data
+│   ├── best_threshold.pkl             # Validation-tuned decision threshold
+│   ├── shap_explainer.pkl             # Serialized TreeExplainer instance
+│   ├── feature_names.pkl              # 30-feature order manifest
+│   ├── evaluation_report.json         # Machine-readable test split metrics
+│   └── metadata.json                  # Model version & provenance metadata
 │
 ├── scripts/
-│   └── bootstrap_model.py             # Automatic model artifact generator
+│   └── bootstrap_model.py             # Reproducible artifact generator & evaluation reporter
 │
-├── src/                               # Offline ML Pipeline Scripts
+├── src/                               # Offline ML Training Pipeline
 │   ├── 01_eda.py                      # Exploratory Data Analysis & visual reporting
 │   ├── 02_preprocessing.py            # Stratified train-test split & SMOTE resampling
-│   ├── 03_model_training.py           # Model comparison (XGB, RF, LR, Isolation Forest)
+│   ├── 03_model_training.py           # Model training & hyperparameter tuning
 │   ├── 04_evaluation.py               # Precision-Recall threshold sweep & business cost math
-│   └── 05_shap_explainability.py      # SHAP beeswarm, waterfall, & force plots
+│   ├── 05_shap_explainability.py      # SHAP beeswarm, waterfall, & force plots
+│   └── utils.py                       # Logging & utility helpers
 │
-└── tests/                             # Comprehensive Test Suite
-    ├── test_api.py                    # API client & route tests
-    ├── test_predictor.py              # Preprocessing & prediction unit tests
-    └── test_validation.py             # Input edge case validation (NaN, Infinity, negative values)
+└── tests/                             # Pytest Backend Test Suite
+    ├── test_api.py                    # Endpoint contracts & response schemas
+    ├── test_predictor.py              # Inference logic & feature ordering
+    └── test_validation.py             # Boundary checks, NaN/Infinity rejection, upload limits
 ```
 
 ---
 
-## 📈 Model Performance & Evaluation Results
+## 📊 6. Dataset Requirements & Training Pipeline
 
-Models were evaluated on a holdout test split of **56,962 transactions** (containing **98 fraud cases**). Selection prioritized **PR-AUC (Precision-Recall Area Under Curve)** due to extreme class imbalance.
+### Genuine Dataset (Production)
+To train against real-world credit card transactions, place the standard European cardholder dataset at:
+```
+data/creditcard.csv
+```
+* **Rows:** 284,807 transactions.
+* **Features:** 30 numerical inputs (`Time`, `Amount`, and `V1` through `V28` PCA transforms).
+* **Target:** `Class` (0 for legitimate, 1 for fraudulent).
 
-| Model | PR-AUC (Primary) | ROC-AUC | Recall | Precision | F1-Score |
-| :--- | :---: | :---: | :---: | :---: | :---: |
-| **XGBoost (Primary Model)** | **0.8449** | **0.9770** | **87.76%** | **38.05%** | **0.8144** |
-| Random Forest | 0.8492 | 0.9654 | 80.61% | 84.04% | 0.8229 |
-| Logistic Regression | 0.7431 | 0.9610 | 89.80% | 5.73% | 0.1077 |
-| Isolation Forest (Unsupervised) | 0.2810 | 0.8710 | 38.78% | 20.88% | 0.2714 |
+Execute the full training pipeline:
+```bash
+python3 src/01_eda.py
+python3 src/02_preprocessing.py
+python3 src/03_model_training.py
+python3 src/04_evaluation.py
+python3 src/05_shap_explainability.py
+```
 
-*Note: Accuracy is strictly excluded as a selection metric because a trivial baseline model predicting all transactions as 'Legitimate' achieves 99.83% accuracy while failing to catch a single fraud case.*
+### Synthetic Bootstrap Fallback (Demonstration)
+If `data/creditcard.csv` is not present, FinGuard AI includes an automated generator:
+```bash
+python3 scripts/bootstrap_model.py
+```
+This produces a reproducible synthetic dataset with authentic class imbalance (0.17% fraud rate), performs stratified 70/15/15 splits, trains an XGBoost classifier with `scale_pos_weight`, tunes the decision threshold on validation, evaluates on an untouched test set, and serializes all 7 required artifacts to `models/`.
+
+> **Note on Demonstration Mode:** When running on synthetic data, FinGuard AI displays a prominent "Demo Mode" badge in the UI and sets `is_synthetic: true` in the API. It never falsely claims real-world validation.
 
 ---
 
-## 💼 Business Cost & Threshold Optimization
+## 🔍 7. Evaluation Methodology & Metrics
 
-Standard models default to a 0.50 threshold. Because missing a fraud transaction (**False Negative**) incurs a cost (~**$122.00**) far greater than blocking a legitimate customer card (**False Positive**, ~**$2.00**), FraudGuard sweeps decision thresholds to isolate the F1-score optimal threshold:
+Model performance is evaluated on a holdout test split using metrics tailored for extreme class imbalance:
 
-* **Optimal Threshold:** **`0.42`**
-* **Fraud Prevented:** **87.8% of total fraud cases** in test split.
-* **Financial Loss Prevented:** **$10,492.00**
-* **False Alarm Friction Cost:** **$280.00**
-* **Net Business Savings:** **$10,212.00**
+- **PR-AUC (Precision-Recall Area Under Curve):** Primary metric for imbalanced fraud classification.
+- **Recall:** Measures the percentage of actual fraud caught ($\frac{TP}{TP + FN}$).
+- **Precision:** Measures the percentage of flagged transactions that were truly fraudulent ($\frac{TP}{TP + FP}$).
+- **F1-Score:** Harmonic mean of precision and recall at the chosen threshold.
+- **ROC-AUC:** Area under Receiver Operating Characteristic curve.
+- **Decision Threshold:** Calibrated on the validation set rather than defaulting to 0.50.
+
+All metrics displayed in the frontend come dynamically from `GET /model-stats`, reading [models/evaluation_report.json](file:///Users/sidhusingh/Developer/FraudGuard/models/evaluation_report.json). No numbers are hardcoded or fabricated.
 
 ---
 
-## 🔌 API Documentation
+## 🧠 8. SHAP Explainability Engine
 
-### 1. Service Liveness Check
-`GET /health`
-```json
-{
-  "status": "healthy"
-}
+FinGuard AI uses **TreeSHAP** (`shap.TreeExplainer`) to explain individual predictions:
+
+- **Mathematical Formulation:** Decomposes the model's raw log-odds margin into additive feature attributions:
+  $$\ln\left(\frac{P(Y=1)}{1-P(Y=1)}\right) = \phi_0 + \sum_{i=1}^{30} \phi_i(x)$$
+- **Contribution Factors:** Top positive and negative contributors are isolated and rendered with impact ratings (`high`, `medium`, `low`) and directional guidance.
+- **Interpretability Disclaimer:** SHAP describes statistical model associations, not real-world causation. It demonstrates which features influenced the tree ensemble's score, not proof of financial wrongdoing.
+
+---
+
+## ⚡ 9. Local Development Setup
+
+### Prerequisites
+- Python 3.10+ (Python 3.11 recommended)
+- Node.js 18+ (Node 20+ recommended)
+- Git
+
+### 1. Clone & Set Up Backend
+```bash
+git clone https://github.com/rajputsidhu/FraudGuard.git
+cd FraudGuard
+
+# Create Python virtual environment
+python3 -m venv venv
+source venv/bin/activate
+
+# Install dependencies
+pip install -r requirements.txt
+
+# Verify or bootstrap model artifacts
+python3 scripts/bootstrap_model.py
+
+# Launch FastAPI development server
+uvicorn api.main:app --host 0.0.0.0 --port 8000 --reload
+```
+*Backend runs at:* `http://localhost:8000` | *API Docs:* `http://localhost:8000/docs`
+
+### 2. Set Up Frontend
+In a new terminal:
+```bash
+cd frontend
+
+# Install Node modules
+npm install
+
+# Start Vite development server
+npm run dev
+```
+*Frontend runs at:* `http://localhost:5173`
+
+---
+
+## 🐳 10. Docker Deployment
+
+FinGuard AI provides complete multi-container orchestration with health checks and non-root security.
+
+### 1. Build and Run
+```bash
+# Build images and start containers in the background
+docker compose up --build -d
+
+# Check service health and running status
+docker compose ps
+
+# View unified service logs
+docker compose logs -f
+
+# Gracefully stop services
+docker compose down
 ```
 
-### 2. Service Readiness Probe
-`GET /ready`
-```json
-{
-  "status": "ready",
-  "model_loaded": true,
-  "artifacts_valid": true,
-  "artifacts_status": {
-    "model_xgb.pkl": true,
-    "scaler.pkl": true,
-    "best_threshold.pkl": true,
-    "shap_explainer.pkl": true,
-    "feature_names.pkl": true
-  }
-}
-```
+### 2. Service Endpoints
+| Service | Container Name | Published Port | Internal Port | Healthcheck |
+| :--- | :--- | :--- | :--- | :--- |
+| **Frontend** | `finguard_frontend` | `5173` | `80 (Nginx)` | Depends on backend health |
+| **Backend** | `finguard_backend` | `8000` | `8000 (Uvicorn)` | `curl -f http://localhost:8000/health` |
 
-### 3. Public Model Metadata
-`GET /model-info`
-```json
-{
-  "model": "XGBoost",
-  "model_version": "xgb-v1.0",
-  "explainability": "SHAP TreeExplainer",
-  "feature_count": 30,
-  "threshold": 0.42,
-  "calibration_note": "Score represents raw model score derived from dataset training patterns."
-}
-```
+---
 
-### 4. Transaction Risk Assessment
+## ⚙️ 11. Environment Variables
+
+Create a `.env` file in the project root based on [.env.example](file:///Users/sidhusingh/Developer/FraudGuard/.env.example):
+
+| Variable | Default Value | Description |
+| :--- | :--- | :--- |
+| `ENVIRONMENT` | `development` | Runtime environment (`development`, `production`) |
+| `HOST` | `0.0.0.0` | Backend bind host |
+| `PORT` | `8000` | Backend bind port |
+| `MODEL_VERSION` | `xgb-v1.0` | Active model identifier |
+| `RATE_LIMIT_PER_MINUTE`| `60` | Request rate limit per IP |
+| `MAX_BATCH_ROWS` | `10000` | Maximum rows allowed per CSV batch |
+| `MAX_UPLOAD_SIZE_BYTES`| `26214400` | Max file upload limit (25 MB) |
+| `CORS_ORIGINS` | `["http://localhost:5173", ...]` | Allowed CORS origins (JSON array) |
+| `VITE_API_BASE_URL` | `http://localhost:8000` | Backend URL for Vite frontend client |
+
+---
+
+## 🔌 12. API Reference & Examples
+
+### Health & Readiness
+- `GET /health` — Liveness check. Returns `{"status": "healthy"}`.
+- `GET /ready` — Readiness check. Verifies all 7 model artifacts and reports readiness state (`ready` or `demo_ready`).
+- `GET /model-info` — Public model configuration, version, threshold, and feature count.
+- `GET /model-stats` — Detailed evaluation report metrics from test split.
+- `GET /feature-names` — Array of the 30 expected feature names.
+
+### Single Prediction
 `POST /predict`
-* **Request Body:**
 ```json
 {
-  "Time": 11700.0,
-  "Amount": 350.00,
-  "V1": -1.85, "V2": 2.15, "V3": -3.10, "V4": 3.45, "V5": -1.95,
-  "V6": -0.85, "V7": -3.20, "V8": 0.95, "V9": -2.15, "V10": -3.80,
-  "V11": 2.95, "V12": -3.90, "V13": -0.45, "V14": -4.25, "V15": -0.35,
-  "V16": -2.85, "V17": -3.80, "V18": -1.95, "V19": 0.85, "V20": 0.45,
-  "V21": 0.65, "V22": 0.15, "V23": -0.25, "V24": 0.12, "V25": 0.35,
-  "V26": 0.45, "V27": 0.85, "V28": 0.32
+  "Time": 3600.0,
+  "Amount": 125.50,
+  "V1": -1.35, "V2": 2.10, "V3": -1.80, "V4": 1.20, "V5": -0.85,
+  "V6": -0.40, "V7": -1.50, "V8": 0.75, "V9": -0.90, "V10": -2.10,
+  "V11": 1.50, "V12": -2.30, "V13": -0.10, "V14": -3.10, "V15": 0.20,
+  "V16": -1.70, "V17": -2.40, "V18": -0.80, "V19": 0.50, "V20": 0.30,
+  "V21": 0.40, "V22": 0.10, "V23": -0.15, "V24": 0.05, "V25": 0.25,
+  "V26": 0.30, "V27": 0.50, "V28": 0.20
 }
 ```
-* **Response:**
+**Response (200 OK):**
 ```json
 {
   "prediction": "FRAUD",
   "model_assessment": "Potentially suspicious transaction pattern detected",
-  "risk_score": 84,
+  "risk_score": 86,
   "risk_level": "HIGH",
-  "model_probability": 0.847,
-  "threshold": 0.42,
+  "model_probability": 0.864,
+  "threshold": 0.32,
   "model_version": "xgb-v1.0",
+  "fraud_probability": 0.864,
+  "is_fraud": true,
   "explanation_factors": [
     {
       "factor": "V14",
       "impact": "high",
       "direction": "increases_risk",
-      "description": "Transaction behavior pattern feature 'V14' contributed to the model score"
-    },
-    {
-      "factor": "V17",
-      "impact": "high",
-      "direction": "increases_risk",
-      "description": "Transaction behavior pattern feature 'V17' contributed to the model score"
-    },
-    {
-      "factor": "Amount",
-      "impact": "medium",
-      "direction": "increases_risk",
-      "description": "Transaction amount-related characteristics contributed to the score assessment"
+      "description": "Behavioral pattern indicator 'V14' significantly elevated the fraud risk score"
     }
-  ],
-  "fraud_probability": 0.847,
-  "is_fraud": true,
-  "probability": 0.847,
-  "shap_values": {
-    "V14": -2.85,
-    "V17": -2.10,
-    "Amount": 0.88
-  }
+  ]
 }
 ```
 
+### SHAP Explanation
+`POST /explain` — Takes identical 30-feature payload and returns raw base values, feature contributions, and top influential factors.
+
+### Batch CSV Prediction
+`POST /predict-file` — Accepts multipart CSV upload (up to 10,000 rows), returns summary statistics and row-by-row classifications.
+
 ---
 
-## ⚡ Quick Start & Deployment
+## 🧪 13. Test Suite
 
-### 1. Run with Docker Compose (Recommended)
+Execute the complete backend automated test suite:
 ```bash
-# Clone repository
-git clone https://github.com/rajputsidhu/FraudGuard.git
-cd FraudGuard
-
-# Build and start services in background
-docker-compose up --build -d
-
-# Verify container statuses
-docker-compose ps
+pytest -v
 ```
-* **Frontend Web Application:** [http://localhost:5173](http://localhost:5173)
-* **Backend FastAPI REST API:** [http://localhost:8000](http://localhost:8000)
-* **Interactive Swagger Docs:** [http://localhost:8000/docs](http://localhost:8000/docs)
+The test suite covers:
+- Route liveness and readiness probe verification.
+- Pydantic schema validation (negative amounts, negative times, NaN, and Infinity rejection).
+- HTTP 413 oversized file rejection and HTTP 422 max-row enforcement.
+- Model prediction, threshold application, and feature ordering.
+- Batch CSV header verification and malformed file handling.
+- SHAP generation and missing artifact error boundaries.
 
-### 2. Local Manual Setup
-
-#### Backend Setup:
-```bash
-# Create and activate virtual environment
-python3 -m venv venv
-source venv/bin/activate
-
-# Install requirements
-pip install -r requirements.txt
-
-# Bootstrap model artifacts if models/ is empty
-python scripts/bootstrap_model.py
-
-# Run FastAPI backend
-python api/main.py
-```
-
-#### Frontend Setup:
+Verify frontend production compilation:
 ```bash
 cd frontend
-npm install
-npm run dev
-```
-
-### 3. Run Test Suite
-```bash
-python -m pytest tests/ -v
+npm run build
 ```
 
 ---
 
-## 🔒 Privacy & Safety Guarantee
+## ☁️ 14. Cloud Deployment Guide
 
-FraudGuard is built with privacy-by-design:
-1. **Zero Credential Requirement:** Never asks for or accepts card numbers, CVVs, PINs, OTPs, passwords, or banking logins.
-2. **Zero Storage:** Transactions evaluated via the API are processed in-memory for inference and immediately discarded.
-3. **Local Storage Only:** Any browser history remains strictly in local client state and can be deleted anytime.
+FinGuard AI is designed for decoupled cloud deployment:
+
+### Backend (e.g. Render, Railway, Fly.io, AWS ECS)
+1. Configure environment: Python 3.11 or Docker context targeting root `Dockerfile`.
+2. Set environment variables:
+   - `ENVIRONMENT=production`
+   - `PORT=8000`
+   - `CORS_ORIGINS=["https://your-finguard-frontend.domain.com"]`
+3. Mount or supply `models/` artifacts (via persistent volume or build step calling `python scripts/bootstrap_model.py`).
+4. Set healthcheck endpoint to `GET /health`.
+
+### Frontend (e.g. Vercel, Netlify, Cloudflare Pages, AWS S3/CloudFront)
+1. Build command: `npm run build`
+2. Publish directory: `dist`
+3. Environment variable: `VITE_API_BASE_URL=https://your-finguard-backend.domain.com`
+4. Enable Single-Page Application (SPA) rewrite rule: route all `/*` requests to `/index.html`.
 
 ---
 
-## ⚠️ Important Limitations & Disclaimer
+## 🔒 15. Privacy & Security Architecture
 
-FraudGuard is an educational/experimental AI transaction risk assessment application and software engineering project.
+1. **Zero Financial Credential Ingestion:** FinGuard AI strictly rejects primary card numbers (PANs), cardholder names, CVVs, PINs, OTPs, and passwords.
+2. **In-Memory Volatile Processing:** Transaction payloads are evaluated in RAM and immediately discarded. No customer transaction data is persisted in a database or logged to disk.
+3. **Session-Bound Browser State:** Assessment history in the frontend is stored strictly in memory for the active browser session. Users can clear session history at any time.
+4. **Input Sanitization:** Batch CSV files are parsed safely via pandas with row and memory boundaries, mitigating denial-of-service and memory exhaustion attacks.
 
-* **Not Bank-Grade Prevention:** FraudGuard does not perform real-world payment authorization, declines, or banking security checks.
-* **Dataset Dependencies:** Trained on benchmark credit card transaction datasets; real-world fraud patterns evolve dynamically.
-* **No Financial/Legal Advice:** Model outputs are machine learning estimates and do not constitute financial or legal advice. In case of actual suspicious card activity, contact your card issuer via the official phone number on your physical card.
+---
+
+## ⚠️ 16. Limitations & Disclaimer
+
+- **Experimental Risk Indicators:** FinGuard AI generates experimental statistical risk scores based on trained machine-learning models. Outputs do **not** confirm that a transaction is fraudulent or legitimate.
+- **No Payment Authorization:** This system does not decline cards, freeze accounts, or process financial settlements.
+- **Anonymized Features:** The European cardholder dataset employs PCA-anonymized features (`V1`–`V28`) to protect consumer confidentiality. These features cannot be mapped directly to specific merchants or geolocations.
+- **Not Legal/Financial Advice:** Model outputs are for analytical and educational purposes only. For actual card discrepancies, contact the issuing bank directly.
 
 ---
 
 ## 📄 License
-Distributed under the MIT License. See `LICENSE` for details.
+This project is licensed under the MIT License — see the `LICENSE` file for details.

@@ -7,63 +7,111 @@ import {
   Code2, 
   Lock, 
   Activity,
-  ChevronRight
+  Sliders,
+  X
 } from 'lucide-react';
 
-const Sidebar = () => {
+const Sidebar = ({ isMobileOpen, onCloseMobile }) => {
   const location = useLocation();
 
-  const navItems = [
-    { path: '/', label: 'Risk Assessment', icon: ShieldAlert, shortcut: '⌘1' },
-    { path: '/dashboard', label: 'Intelligence Dashboard', icon: BarChart3, shortcut: '⌘2' },
-    { path: '/batch-upload', label: 'Batch Analysis', icon: Layers, shortcut: '⌘3' },
-    { path: '/how-it-works', label: 'Model Intelligence', icon: Cpu, shortcut: '⌘4' },
-    { path: '/api-explorer', label: 'API Explorer', icon: Code2, shortcut: '⌘5' },
-    { path: '/privacy', label: 'Privacy & Safety', icon: Lock, shortcut: '⌘6' }
+  const navigationSections = [
+    {
+      title: 'OVERVIEW',
+      items: [
+        { path: '/dashboard', label: 'Risk Intelligence', icon: BarChart3, shortcut: '⌘1' }
+      ]
+    },
+    {
+      title: 'ANALYSIS',
+      items: [
+        { path: '/', label: 'Transaction Assessment', icon: ShieldAlert, shortcut: '⌘2' },
+        { path: '/batch-analysis', label: 'Batch Risk Analysis', icon: Layers, shortcut: '⌘3' },
+        { path: '/explainability', label: 'Explainable AI', icon: Sliders, shortcut: '⌘4' }
+      ]
+    },
+    {
+      title: 'INTELLIGENCE',
+      items: [
+        { path: '/model-intelligence', label: 'Model Intelligence', icon: Cpu, shortcut: '⌘5' },
+        { path: '/api-explorer', label: 'API Explorer', icon: Code2, shortcut: '⌘6' }
+      ]
+    },
+    {
+      title: 'SYSTEM',
+      items: [
+        { path: '/privacy', label: 'Privacy & Limitations', icon: Lock, shortcut: '⌘7' }
+      ]
+    }
   ];
 
   return (
-    <aside className="console-sidebar">
-      {/* Brand Header */}
-      <div className="brand-section">
-        <div className="brand-logo-icon">
-          <ShieldAlert size={18} />
-        </div>
-        <div className="brand-info">
-          <span className="brand-name">FraudGuard</span>
-          <span className="brand-tagline">Risk Intelligence</span>
-        </div>
-      </div>
+    <>
+      {/* Mobile Drawer Overlay */}
+      <div 
+        className={`sidebar-overlay ${isMobileOpen ? 'active' : ''}`}
+        onClick={onCloseMobile}
+        aria-hidden="true"
+      />
 
-      {/* Main Menu Links */}
-      <nav className="nav-menu">
-        {navItems.map((item) => {
-          const Icon = item.icon;
-          const isActive = location.pathname === item.path;
-          return (
-            <Link
-              key={item.path}
-              to={item.path}
-              className={`nav-item ${isActive ? 'active' : ''}`}
+      <aside className={`console-sidebar ${isMobileOpen ? 'mobile-open' : ''}`}>
+        {/* Brand Header */}
+        <div className="brand-section">
+          <div className="brand-left">
+            <div className="brand-logo-icon">
+              <ShieldAlert size={18} />
+            </div>
+            <div className="brand-info">
+              <span className="brand-name">FinGuard AI</span>
+              <span className="brand-tagline">Risk Intelligence</span>
+            </div>
+          </div>
+          {isMobileOpen && (
+            <button 
+              onClick={onCloseMobile}
+              className="mobile-menu-btn"
+              aria-label="Close menu"
             >
-              <div className="nav-item-left">
-                <Icon size={16} />
-                <span>{item.label}</span>
-              </div>
-              <span className="shortcut-badge">{item.shortcut}</span>
-            </Link>
-          );
-        })}
-      </nav>
-
-      {/* Environment Footer */}
-      <div className="sidebar-footer">
-        <div className="env-badge">
-          <span>MODEL VERSION</span>
-          <strong style={{ color: 'var(--accent-primary)' }}>xgb-v1.0</strong>
+              <X size={18} />
+            </button>
+          )}
         </div>
-      </div>
-    </aside>
+
+        {/* Navigation Sections */}
+        <nav className="nav-menu">
+          {navigationSections.map((section) => (
+            <div key={section.title} style={{ marginBottom: '8px' }}>
+              <div className="nav-section-title">{section.title}</div>
+              {section.items.map((item) => {
+                const Icon = item.icon;
+                const isActive = location.pathname === item.path;
+                return (
+                  <Link
+                    key={item.path}
+                    to={item.path}
+                    onClick={onCloseMobile}
+                    className={`nav-item ${isActive ? 'active' : ''}`}
+                  >
+                    <div className="nav-item-left">
+                      <Icon size={16} />
+                      <span>{item.label}</span>
+                    </div>
+                    <span className="shortcut-badge">{item.shortcut}</span>
+                  </Link>
+                );
+              })}
+            </div>
+          ))}
+        </nav>
+
+        {/* Environment Footer */}
+        <div className="sidebar-footer">
+          <div className="env-badge">
+            <span>MODEL VERSION</span>
+            <strong style={{ color: 'var(--accent-primary)' }}>xgb-v1.0</strong>
+          </div>
+        </div>
+      </aside>
+    </>
   );
 };
 

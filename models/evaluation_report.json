@@ -1,0 +1,25 @@
+{
+  "model_name": "XGBoost",
+  "model_version": "xgb-v1.0",
+  "dataset_type": "synthetic_demonstration",
+  "is_synthetic": true,
+  "evaluation_timestamp": "2026-10-15T15:55:19.406889+00:00",
+  "decision_threshold": 0.32,
+  "test_sample_count": 600,
+  "test_fraud_count": 18,
+  "metrics": {
+    "pr_auc": 0.994,
+    "roc_auc": 0.9998,
+    "recall": 1.0,
+    "precision": 0.9,
+    "f1_score": 0.9474,
+    "accuracy": 0.9967
+  },
+  "confusion_matrix": {
+    "true_negatives": 580,
+    "false_positives": 2,
+    "false_negatives": 0,
+    "true_positives": 18
+  },
+  "disclaimer": "Model evaluated on synthetic demonstration data. Not validated on real-world bank production data."
+}

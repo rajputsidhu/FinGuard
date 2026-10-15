@@ -28,10 +28,11 @@ share/python-wheels/
 # Data and Models
 data/creditcard.csv
 data_processed/
-models/
+# Note: models/ is tracked (total ~460KB) for zero-setup deployment (Docker & Streamlit Cloud)
 outputs/plots/
 outputs/reports/
 logs/*.log
+
 
 # Environment files
 .env

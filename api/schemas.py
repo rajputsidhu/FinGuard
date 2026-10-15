@@ -119,6 +119,8 @@ class ModelInfoResponse(BaseModel):
     explainability: str = Field(default="SHAP", example="SHAP")
     feature_count: int = Field(default=30, example=30)
     threshold: float = Field(default=0.42, example=0.42)
+    dataset_type: str = Field(default="Synthetic Demonstration Dataset", example="Synthetic Demonstration Dataset")
+    is_synthetic: bool = Field(default=True, example=True)
     calibration_note: str = Field(
         default="Score represents raw model score derived from dataset training patterns. Not guaranteed probability of real-world financial fraud.",
         description="Disclaimer on model probability calibration"
@@ -129,8 +131,63 @@ class ReadinessResponse(BaseModel):
     """
     Schema for service readiness endpoint.
     """
-    status: str = Field(..., example="ready", description="Service readiness status: ready or not_ready")
+    status: str = Field(..., example="ready", description="Service readiness status: ready, demo, degraded, or not_ready")
     model_loaded: bool = Field(..., example=True)
     artifacts_valid: bool = Field(..., example=True)
+    is_synthetic: bool = Field(default=False, example=False)
+    dataset_type: str = Field(default="genuine_creditcard", example="genuine_creditcard")
     artifacts_status: Dict[str, bool] = Field(..., description="Validation status of required model artifacts")
+
+
+class MetricsDetail(BaseModel):
+    pr_auc: Optional[float] = None
+    roc_auc: Optional[float] = None
+    recall: Optional[float] = None
+    precision: Optional[float] = None
+    f1_score: Optional[float] = None
+    accuracy: Optional[float] = None
+
+
+class ConfusionMatrixDetail(BaseModel):
+    true_negatives: int = 0
+    false_positives: int = 0
+    false_negatives: int = 0
+    true_positives: int = 0
+
+
+class ModelStatsResponse(BaseModel):
+    """
+    Schema for verified model evaluation statistics.
+    """
+    status: str = Field(default="available", example="available")
+    model: str = Field(default="XGBoost", example="XGBoost")
+    model_version: str = Field(default="xgb-v1.0", example="xgb-v1.0")
+    dataset_type: str = Field(default="synthetic_demonstration", example="synthetic_demonstration")
+    is_synthetic: bool = Field(default=True, example=True)
+    evaluation_timestamp: Optional[str] = None
+    decision_threshold: float = Field(default=0.42, example=0.42)
+    test_sample_count: int = Field(default=0, example=600)
+    test_fraud_count: int = Field(default=0, example=18)
+    metrics: MetricsDetail
+    confusion_matrix: ConfusionMatrixDetail
+    disclaimer: str
+
+
+class BatchPredictionItem(BaseModel):
+    row_index: int
+    Time: float
+    Amount: float
+    fraud_probability: float
+    prediction: str
+    risk_level: str
+    is_fraud: bool
+
+
+class BatchPredictResponse(BaseModel):
+    total_count: int
+    fraud_count: int
+    legit_count: int
+    fraud_ratio: float
+    predictions: List[BatchPredictionItem]
+
 

@@ -1,172 +1,497 @@
 import { useState, useEffect } from 'react';
-import { BarChart2, ShieldCheck, PieChart, Activity, AlertCircle, FileText, CheckCircle2 } from 'lucide-react';
-import { getModelStats } from '../api/fraudApi';
+import { Link } from 'react-router-dom';
+import { 
+  ShieldAlert, 
+  CheckCircle2, 
+  AlertTriangle, 
+  XCircle, 
+  RefreshCw, 
+  ArrowUpRight, 
+  Activity, 
+  BarChart2, 
+  Layers, 
+  FileText,
+  Clock,
+  Sliders,
+  TrendingUp,
+  Cpu
+} from 'lucide-react';
+import { 
+  BarChart, 
+  Bar, 
+  PieChart, 
+  Pie, 
+  Cell, 
+  XAxis, 
+  YAxis, 
+  CartesianGrid, 
+  Tooltip, 
+  ResponsiveContainer, 
+  Legend 
+} from 'recharts';
+import { useAssessments } from '../context/AssessmentContext';
+import { getReadiness, getModelInfo } from '../api/fraudApi';
 
 const Dashboard = () => {
-  const [stats, setStats] = useState(null);
+  const { history, metrics, clearHistory } = useAssessments();
+  const [readiness, setReadiness] = useState(null);
+  const [modelInfo, setModelInfo] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [lastRefreshed, setLastRefreshed] = useState(new Date().toLocaleTimeString());
 
-  useEffect(() => {
-    const fetchStats = async () => {
-      const res = await getModelStats();
-      if (res.data) setStats(res.data);
-      setLoading(false);
-    };
-    fetchStats();
-  }, []);
-
-  const evalData = stats?.dataset_evaluation || stats || {
-    roc_auc: 0.9770,
-    pr_auc: 0.8449,
-    recall: 0.8776,
-    precision: 0.3805,
-    f1: 0.8144
+  const fetchStatus = async () => {
+    setLoading(true);
+    const [readyRes, infoRes] = await Promise.all([
+      getReadiness(),
+      getModelInfo()
+    ]);
+    
+    if (readyRes.data) setReadiness(readyRes.data);
+    if (infoRes.data) setModelInfo(infoRes.data);
+    setLastRefreshed(new Date().toLocaleTimeString());
+    setLoading(false);
   };
 
+  useEffect(() => {
+    fetchStatus();
+  }, []);
+
+  // Compute chart data from genuine assessment history
+  const predictionDistribution = [
+    { name: 'Legitimate', count: metrics.legitCount, color: '#34D399' },
+    { name: 'Potential Fraud', count: metrics.fraudCount, color: '#F87171' }
+  ].filter(item => metrics.totalAnalyzed > 0);
+
+  // Risk Score Distribution buckets: 0-30, 31-60, 61-80, 81-100
+  const scoreBuckets = [
+    { range: '0–30 (Low)', count: 0, color: '#34D399' },
+    { range: '31–60 (Med)', count: 0, color: '#FBBF24' },
+    { range: '61–80 (High)', count: 0, color: '#F97316' },
+    { range: '81–100 (Crit)', count: 0, color: '#F87171' }
+  ];
+
+  history.forEach(item => {
+    const s = item.risk_score || 0;
+    if (s <= 30) scoreBuckets[0].count += 1;
+    else if (s <= 60) scoreBuckets[1].count += 1;
+    else if (s <= 80) scoreBuckets[2].count += 1;
+    else scoreBuckets[3].count += 1;
+  });
+
+  // Transaction Amount Distribution buckets: <$50, $50-$200, $200-$1000, >$1000
+  const amountBuckets = [
+    { range: '< $50', count: 0 },
+    { range: '$50–$200', count: 0 },
+    { range: '$200–$1,000', count: 0 },
+    { range: '> $1,000', count: 0 }
+  ];
+
+  history.forEach(item => {
+    const a = item.Amount || 0;
+    if (a < 50) amountBuckets[0].count += 1;
+    else if (a < 200) amountBuckets[1].count += 1;
+    else if (a < 1000) amountBuckets[2].count += 1;
+    else amountBuckets[3].count += 1;
+  });
+
+  // Verified Readiness Status
+  const isOnline = readiness && readiness.status !== 'offline';
+  const isReady = readiness && readiness.artifacts_valid;
+  const isSynthetic = readiness?.is_synthetic || modelInfo?.is_synthetic;
+
+  let modelStatusBadge = {
+    label: 'Unavailable',
+    color: 'var(--risk-critical)',
+    bg: 'var(--risk-critical-bg)',
+    border: 'var(--risk-critical-border)'
+  };
+
+  if (!isOnline) {
+    modelStatusBadge = {
+      label: 'Unavailable (Offline)',
+      color: 'var(--risk-critical)',
+      bg: 'var(--risk-critical-bg)',
+      border: 'var(--risk-critical-border)'
+    };
+  } else if (!isReady) {
+    modelStatusBadge = {
+      label: 'Degraded (Missing Artifacts)',
+      color: 'var(--risk-medium)',
+      bg: 'var(--risk-medium-bg)',
+      border: 'var(--risk-medium-border)'
+    };
+  } else if (isSynthetic) {
+    modelStatusBadge = {
+      label: 'Demo Mode (Synthetic Data)',
+      color: 'var(--risk-medium)',
+      bg: 'var(--risk-medium-bg)',
+      border: 'var(--risk-medium-border)'
+    };
+  } else {
+    modelStatusBadge = {
+      label: 'Production Ready',
+      color: 'var(--risk-low)',
+      bg: 'var(--risk-low-bg)',
+      border: 'var(--risk-low-border)'
+    };
+  }
+
   return (
-    <div className="page-container fade-in">
-      <div className="hero-banner">
-        <h1 className="hero-title">Model Evaluation & Analytics Dashboard</h1>
-        <p className="hero-subtitle">
-          Evaluation performance metrics derived from holdout test set evaluation on historical credit card transaction patterns.
-        </p>
-      </div>
-
-      {/* Metric Cards Grid */}
-      <div className="stats-grid">
-        <div className="stat-card">
-          <div className="stat-icon-wrapper blue">
-            <BarChart2 size={24} />
-          </div>
-          <div>
-            <span className="stat-label">PR-AUC (Primary Metric)</span>
-            <span className="stat-value">{(evalData.pr_auc * 100).toFixed(2)}%</span>
-          </div>
+    <div className="fade-in">
+      {/* Page Header and Toolbar */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '20px', flexWrap: 'wrap', gap: '16px' }}>
+        <div>
+          <h1 className="page-title">Risk Intelligence</h1>
+          <p className="page-description">Monitor transaction assessments, fraud signals, and model health.</p>
         </div>
 
-        <div className="stat-card">
-          <div className="stat-icon-wrapper green">
-            <Activity size={24} />
+        {/* Toolbar */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
+          <div style={{ fontSize: '11px', color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: '6px' }}>
+            <Clock size={12} />
+            <span>Last refresh: {lastRefreshed}</span>
           </div>
-          <div>
-            <span className="stat-label">Recall (Fraud Sensitivity)</span>
-            <span className="stat-value">{(evalData.recall * 100).toFixed(2)}%</span>
-          </div>
-        </div>
 
-        <div className="stat-card">
-          <div className="stat-icon-wrapper purple">
-            <ShieldCheck size={24} />
+          <div style={{ 
+            fontSize: '11px', 
+            padding: '4px 10px', 
+            background: modelStatusBadge.bg, 
+            color: modelStatusBadge.color,
+            border: `1px solid ${modelStatusBadge.border}`,
+            borderRadius: '20px',
+            fontWeight: 700,
+            fontFamily: 'var(--font-mono)'
+          }}>
+            {modelStatusBadge.label}
           </div>
-          <div>
-            <span className="stat-label">ROC-AUC Score</span>
-            <span className="stat-value">{(evalData.roc_auc * 100).toFixed(2)}%</span>
-          </div>
-        </div>
 
-        <div className="stat-card">
-          <div className="stat-icon-wrapper orange">
-            <PieChart size={24} />
-          </div>
-          <div>
-            <span className="stat-label">F1-Score at 0.42 Threshold</span>
-            <span className="stat-value">{(evalData.f1 * 100).toFixed(2)}%</span>
-          </div>
+          <button 
+            onClick={fetchStatus} 
+            className="btn-secondary-console"
+            disabled={loading}
+            title="Refresh status"
+          >
+            <RefreshCw size={13} className={loading ? 'spin' : ''} />
+            <span>Refresh</span>
+          </button>
         </div>
       </div>
 
-      {/* Main Analysis Section */}
-      <div className="row">
-        <div className="col-60">
-          <div className="card">
-            <h3 className="card-title">Holdout Test Set Performance Matrix</h3>
-            <p className="card-subtitle">
-              Evaluation performance on 56,962 test set transactions (containing 98 actual fraud cases).
-            </p>
+      {/* Model Status Overview Banner if Demo or Degraded */}
+      {isSynthetic && isReady && (
+        <div className="banner-notice warning">
+          <AlertTriangle size={18} style={{ flexShrink: 0, marginTop: '2px' }} />
+          <div>
+            <strong>Demonstration Mode Active:</strong> Model artifacts were bootstrapped from a synthetic demonstration transaction dataset. Metrics and predictions represent test simulation patterns and have not been validated on proprietary banking production networks.
+          </div>
+        </div>
+      )}
 
-            <div className="metrics-breakdown-list">
-              <div className="metric-row">
-                <div className="metric-info">
-                  <span className="metric-name">Precision-Recall AUC (PR-AUC)</span>
-                  <span className="metric-desc">Primary metric for imbalanced fraud datasets (0.8449).</span>
-                </div>
-                <div className="metric-bar-wrapper">
-                  <div className="metric-bar" style={{ width: `${(evalData.pr_auc * 100).toFixed(1)}%`, background: '#3b82f6' }}></div>
-                </div>
-              </div>
+      {!isReady && isOnline && (
+        <div className="banner-notice danger">
+          <XCircle size={18} style={{ flexShrink: 0, marginTop: '2px' }} />
+          <div>
+            <strong>Model Artifacts Missing:</strong> Required machine learning pipeline artifacts (model_xgb.pkl, scaler.pkl) were not found on disk. The system is operating in degraded mode. Run <code>python scripts/bootstrap_model.py</code> to generate model artifacts.
+          </div>
+        </div>
+      )}
 
-              <div className="metric-row">
-                <div className="metric-info">
-                  <span className="metric-name">Fraud Sensitivity (Recall)</span>
-                  <span className="metric-desc">Percentage of actual fraud cases caught by the model (87.76%).</span>
-                </div>
-                <div className="metric-bar-wrapper">
-                  <div className="metric-bar" style={{ width: `${(evalData.recall * 100).toFixed(1)}%`, background: '#10b981' }}></div>
-                </div>
-              </div>
+      {/* KPI Cards Grid */}
+      <div className="kpi-grid">
+        <div className="kpi-block">
+          <div className="kpi-label">Transactions Analyzed</div>
+          <div className="kpi-value">{metrics.totalAnalyzed.toLocaleString()}</div>
+          <div className="kpi-subtext">Current-session assessments</div>
+        </div>
 
-              <div className="metric-row">
-                <div className="metric-info">
-                  <span className="metric-name">ROC-AUC Score</span>
-                  <span className="metric-desc">Overall ranking ability across all potential thresholds (0.9770).</span>
-                </div>
-                <div className="metric-bar-wrapper">
-                  <div className="metric-bar" style={{ width: `${(evalData.roc_auc * 100).toFixed(1)}%`, background: '#8b5cf6' }}></div>
-                </div>
-              </div>
+        <div className="kpi-block">
+          <div className="kpi-label">Potential Fraud Flags</div>
+          <div className="kpi-value" style={{ color: metrics.fraudCount > 0 ? 'var(--risk-critical)' : 'inherit' }}>
+            {metrics.fraudCount.toLocaleString()}
+          </div>
+          <div className="kpi-subtext">{metrics.legitCount} classified legitimate</div>
+        </div>
 
-              <div className="metric-row">
-                <div className="metric-info">
-                  <span className="metric-name">Precision (True Alarm Ratio)</span>
-                  <span className="metric-desc">Ratio of flagged transactions that were actual fraud (38.05%).</span>
-                </div>
-                <div className="metric-bar-wrapper">
-                  <div className="metric-bar" style={{ width: `${(evalData.precision * 100).toFixed(1)}%`, background: '#f59e0b' }}></div>
-                </div>
+        <div className="kpi-block">
+          <div className="kpi-label">Prediction Flag Rate</div>
+          <div className="kpi-value" style={{ color: metrics.flagRate > 10 ? 'var(--risk-critical)' : 'var(--accent-primary)' }}>
+            {metrics.flagRate}%
+          </div>
+          <div className="kpi-subtext">Flagged / total evaluations</div>
+        </div>
+
+        <div className="kpi-block">
+          <div className="kpi-label">Average Model Score</div>
+          <div className="kpi-value">
+            {metrics.averageScore}<span style={{ fontSize: '13px', color: 'var(--text-muted)' }}>/100</span>
+          </div>
+          <div className="kpi-subtext">Calculated from verified scores</div>
+        </div>
+      </div>
+
+      {/* Main Analytical Section: Charts & Model Status Panel */}
+      <div style={{ display: 'grid', gridTemplateColumns: '1.8fr 1fr', gap: '24px', marginBottom: '24px' }}>
+        
+        {/* Left Column: Charts Grid or Empty State */}
+        <div>
+          {metrics.totalAnalyzed === 0 ? (
+            <div className="panel empty-state">
+              <ShieldAlert size={36} className="empty-state-icon" />
+              <h3 className="empty-state-title">No Assessment Activity Yet</h3>
+              <p className="empty-state-desc">
+                Evaluate individual transactions or upload a batch CSV to view genuine risk distributions, score charts, and real-time fraud trends.
+              </p>
+              <div style={{ display: 'flex', gap: '10px', justifyContent: 'center' }}>
+                <Link to="/" className="btn-primary-console">
+                  Evaluate Transaction
+                </Link>
+                <Link to="/batch-analysis" className="btn-secondary-console">
+                  Batch Risk Analysis
+                </Link>
               </div>
             </div>
-          </div>
-        </div>
-
-        <div className="col-40">
-          <div className="card">
-            <h3 className="card-title">Confusion Matrix Visualization</h3>
-            <p className="card-subtitle">Performance at F1 optimal threshold (0.42)</p>
-            
-            <div className="cm-container">
-              <div className="cm-label-top">PREDICTED CLASS</div>
-              <div className="cm-label-left">ACTUAL</div>
+          ) : (
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px' }}>
               
-              <div className="cm-grid">
-                <div className="cm-box" style={{ background: 'rgba(16, 185, 129, 0.12)', border: '1px solid rgba(16, 185, 129, 0.3)' }}>
-                  <span className="cm-value" style={{ color: '#10b981' }}>56,724</span>
-                  <span className="cm-name">True Negatives (Legit Correct)</span>
+              {/* Chart A: Prediction Distribution */}
+              <div className="panel" style={{ margin: 0 }}>
+                <div className="panel-header">
+                  <span className="panel-title">Prediction Distribution</span>
+                  <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>Class Breakdown</span>
                 </div>
-                <div className="cm-box" style={{ background: 'rgba(245, 158, 11, 0.12)', border: '1px solid rgba(245, 158, 11, 0.3)' }}>
-                  <span className="cm-value" style={{ color: '#f59e0b' }}>140</span>
-                  <span className="cm-name">False Positives (Legit Blocked)</span>
-                </div>
-                <div className="cm-box" style={{ background: 'rgba(239, 68, 68, 0.12)', border: '1px solid rgba(239, 68, 68, 0.3)' }}>
-                  <span className="cm-value" style={{ color: '#ef4444' }}>12</span>
-                  <span className="cm-name">False Negatives (Fraud Missed)</span>
-                </div>
-                <div className="cm-box" style={{ background: 'rgba(59, 130, 246, 0.12)', border: '1px solid rgba(59, 130, 246, 0.3)' }}>
-                  <span className="cm-value" style={{ color: '#3b82f6' }}>86</span>
-                  <span className="cm-name">True Positives (Fraud Caught)</span>
+                <div style={{ height: '220px', width: '100%' }}>
+                  <ResponsiveContainer width="100%" height="100%">
+                    <PieChart>
+                      <Pie
+                        data={predictionDistribution}
+                        cx="50%"
+                        cy="50%"
+                        innerRadius={50}
+                        outerRadius={75}
+                        paddingAngle={4}
+                        dataKey="count"
+                      >
+                        {predictionDistribution.map((entry, index) => (
+                          <Cell key={`cell-${index}`} fill={entry.color} />
+                        ))}
+                      </Pie>
+                      <Tooltip 
+                        contentStyle={{ 
+                          backgroundColor: 'var(--bg-surface-elevated)', 
+                          borderColor: 'var(--border-default)',
+                          color: 'var(--text-primary)',
+                          borderRadius: '6px',
+                          fontSize: '12px'
+                        }} 
+                      />
+                      <Legend wrapperStyle={{ fontSize: '11px', color: 'var(--text-secondary)' }} />
+                    </PieChart>
+                  </ResponsiveContainer>
                 </div>
               </div>
+
+              {/* Chart B: Risk Score Distribution */}
+              <div className="panel" style={{ margin: 0 }}>
+                <div className="panel-header">
+                  <span className="panel-title">Risk Score Distribution</span>
+                  <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>Score Bands</span>
+                </div>
+                <div style={{ height: '220px', width: '100%' }}>
+                  <ResponsiveContainer width="100%" height="100%">
+                    <BarChart data={scoreBuckets}>
+                      <CartesianGrid strokeDasharray="3 3" stroke="var(--border-subtle)" vertical={false} />
+                      <XAxis dataKey="range" tick={{ fontSize: 10, fill: 'var(--text-muted)' }} />
+                      <YAxis allowDecimals={false} tick={{ fontSize: 10, fill: 'var(--text-muted)' }} />
+                      <Tooltip 
+                        contentStyle={{ 
+                          backgroundColor: 'var(--bg-surface-elevated)', 
+                          borderColor: 'var(--border-default)',
+                          color: 'var(--text-primary)',
+                          borderRadius: '6px',
+                          fontSize: '12px'
+                        }} 
+                      />
+                      <Bar dataKey="count" radius={[4, 4, 0, 0]}>
+                        {scoreBuckets.map((entry, index) => (
+                          <Cell key={`cell-bar-${index}`} fill={entry.color} />
+                        ))}
+                      </Bar>
+                    </BarChart>
+                  </ResponsiveContainer>
+                </div>
+              </div>
+
+              {/* Chart C: Transaction Amount Distribution */}
+              <div className="panel" style={{ gridColumn: 'span 2', margin: 0 }}>
+                <div className="panel-header">
+                  <span className="panel-title">Transaction Amount Distribution</span>
+                  <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>Evaluated Volume Bands</span>
+                </div>
+                <div style={{ height: '200px', width: '100%' }}>
+                  <ResponsiveContainer width="100%" height="100%">
+                    <BarChart data={amountBuckets}>
+                      <CartesianGrid strokeDasharray="3 3" stroke="var(--border-subtle)" vertical={false} />
+                      <XAxis dataKey="range" tick={{ fontSize: 11, fill: 'var(--text-muted)' }} />
+                      <YAxis allowDecimals={false} tick={{ fontSize: 11, fill: 'var(--text-muted)' }} />
+                      <Tooltip 
+                        contentStyle={{ 
+                          backgroundColor: 'var(--bg-surface-elevated)', 
+                          borderColor: 'var(--border-default)',
+                          color: 'var(--text-primary)',
+                          borderRadius: '6px',
+                          fontSize: '12px'
+                        }} 
+                      />
+                      <Bar dataKey="count" fill="var(--accent-secondary)" radius={[4, 4, 0, 0]} />
+                    </BarChart>
+                  </ResponsiveContainer>
+                </div>
+              </div>
+
+            </div>
+          )}
+        </div>
+
+        {/* Right Column: Model Status Panel */}
+        <div>
+          <div className="panel">
+            <div className="panel-header">
+              <span className="panel-title">Model Status Panel</span>
+              <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>Verified State</span>
+            </div>
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '14px', fontSize: '12px' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', paddingBottom: '8px', borderBottom: '1px solid var(--border-subtle)' }}>
+                <span style={{ color: 'var(--text-secondary)' }}>API Status</span>
+                <strong style={{ color: isOnline ? 'var(--risk-low)' : 'var(--risk-critical)' }}>
+                  {isOnline ? 'Online (HTTP 200)' : 'Offline / Unreachable'}
+                </strong>
+              </div>
+
+              <div style={{ display: 'flex', justifyContent: 'space-between', paddingBottom: '8px', borderBottom: '1px solid var(--border-subtle)' }}>
+                <span style={{ color: 'var(--text-secondary)' }}>Model Readiness</span>
+                <span style={{ 
+                  color: modelStatusBadge.color,
+                  fontWeight: 700,
+                  fontFamily: 'var(--font-mono)'
+                }}>
+                  {modelStatusBadge.label}
+                </span>
+              </div>
+
+              <div style={{ display: 'flex', justifyContent: 'space-between', paddingBottom: '8px', borderBottom: '1px solid var(--border-subtle)' }}>
+                <span style={{ color: 'var(--text-secondary)' }}>Algorithm</span>
+                <strong className="mono">{modelInfo?.model || 'XGBoost'}</strong>
+              </div>
+
+              <div style={{ display: 'flex', justifyContent: 'space-between', paddingBottom: '8px', borderBottom: '1px solid var(--border-subtle)' }}>
+                <span style={{ color: 'var(--text-secondary)' }}>Model Version</span>
+                <strong className="mono">{modelInfo?.model_version || 'xgb-v1.0'}</strong>
+              </div>
+
+              <div style={{ display: 'flex', justifyContent: 'space-between', paddingBottom: '8px', borderBottom: '1px solid var(--border-subtle)' }}>
+                <span style={{ color: 'var(--text-secondary)' }}>Feature Count</span>
+                <strong className="mono">{modelInfo?.feature_count || 30} features</strong>
+              </div>
+
+              <div style={{ display: 'flex', justifyContent: 'space-between', paddingBottom: '8px', borderBottom: '1px solid var(--border-subtle)' }}>
+                <span style={{ color: 'var(--text-secondary)' }}>Decision Threshold</span>
+                <strong className="mono" style={{ color: 'var(--accent-primary)' }}>
+                  {modelInfo?.threshold ?? 0.42}
+                </strong>
+              </div>
+
+              <div style={{ display: 'flex', justifyContent: 'space-between', paddingBottom: '8px', borderBottom: '1px solid var(--border-subtle)' }}>
+                <span style={{ color: 'var(--text-secondary)' }}>Explainability Method</span>
+                <strong className="mono">{modelInfo?.explainability || 'SHAP TreeExplainer'}</strong>
+              </div>
+
+              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                <span style={{ color: 'var(--text-secondary)' }}>Dataset Verification</span>
+                <span style={{ color: isSynthetic ? 'var(--risk-medium)' : 'var(--risk-low)', fontWeight: 600 }}>
+                  {isSynthetic ? 'Synthetic Demo Data' : 'Genuine Benchmark Data'}
+                </span>
+              </div>
+            </div>
+
+            <div style={{ marginTop: '20px', paddingTop: '16px', borderTop: '1px solid var(--border-default)' }}>
+              <Link 
+                to="/model-intelligence" 
+                className="btn-secondary-console"
+                style={{ width: '100%', justifyContent: 'center' }}
+              >
+                <span>View Full Model Intelligence</span>
+                <ArrowUpRight size={14} />
+              </Link>
             </div>
           </div>
         </div>
+
       </div>
 
-      {/* Dataset & Evaluation Disclaimer */}
-      <div className="score-calibration-notice" style={{ marginTop: '20px' }}>
-        <AlertCircle size={18} />
-        <span>
-          <strong>Dataset Evaluation Disclaimer:</strong> Metrics reflect holdout test split evaluation on historical data. They demonstrate model capability on benchmark data and do not guarantee future real-world bank performance.
-        </span>
-      </div>
+      {/* Recent Activity Table (Session History) */}
+      {history.length > 0 && (
+        <div className="panel">
+          <div className="panel-header">
+            <div>
+              <span className="panel-title">Recent Session Assessments</span>
+              <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>Showing {Math.min(10, history.length)} of {history.length} session records</span>
+            </div>
+            <button 
+              onClick={clearHistory} 
+              style={{ fontSize: '11px', color: 'var(--risk-critical)' }}
+            >
+              Clear Session
+            </button>
+          </div>
+
+          <div style={{ overflowX: 'auto' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px', textAlign: 'left' }}>
+              <thead>
+                <tr style={{ borderBottom: '1px solid var(--border-default)', color: 'var(--text-muted)' }}>
+                  <th style={{ padding: '8px 10px' }}>Timestamp</th>
+                  <th style={{ padding: '8px 10px' }}>Type</th>
+                  <th style={{ padding: '8px 10px' }}>Amount</th>
+                  <th style={{ padding: '8px 10px' }}>Model Score</th>
+                  <th style={{ padding: '8px 10px' }}>Risk Level</th>
+                  <th style={{ padding: '8px 10px' }}>Verdict</th>
+                </tr>
+              </thead>
+              <tbody>
+                {history.slice(0, 10).map((row) => (
+                  <tr key={row.id} style={{ borderBottom: '1px solid var(--border-subtle)' }}>
+                    <td className="mono" style={{ padding: '8px 10px', color: 'var(--text-muted)' }}>
+                      {new Date(row.timestamp).toLocaleTimeString()}
+                    </td>
+                    <td style={{ padding: '8px 10px' }}>
+                      <span style={{ 
+                        fontSize: '10px', 
+                        padding: '2px 6px', 
+                        background: 'var(--bg-primary)', 
+                        border: '1px solid var(--border-default)',
+                        borderRadius: '3px'
+                      }}>
+                        {row.source === 'batch' ? 'BATCH' : 'SINGLE'}
+                      </span>
+                    </td>
+                    <td className="mono" style={{ padding: '8px 10px' }}>${row.Amount.toFixed(2)}</td>
+                    <td className="mono" style={{ padding: '8px 10px', color: 'var(--accent-primary)', fontWeight: 700 }}>
+                      {row.risk_score}/100
+                    </td>
+                    <td style={{ padding: '8px 10px' }}>
+                      <span className={`badge-risk ${row.risk_level}`}>{row.risk_level}</span>
+                    </td>
+                    <td className="mono" style={{ padding: '8px 10px', color: row.is_fraud ? 'var(--risk-critical)' : 'var(--risk-low)', fontWeight: 700 }}>
+                      {row.prediction}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
     </div>
   );
 };

@@ -32,6 +32,7 @@ client = APIClient()
 
 # Check backend health
 backend_online = client.check_health()
+standalone_mode = not backend_online
 
 # Initialize session state for holding analysis results
 if "analysis_results" not in st.session_state:
@@ -41,21 +42,32 @@ if "analysis_features" not in st.session_state:
 
 # Title banner
 st.markdown("""
-<div style="background:linear-gradient(135deg, #0d1b2a 0%, #1b263b 100%); padding:25px; border-radius:12px; margin-bottom:20px; border-left: 6px solid #4facfe;">
-    <h1 style="margin:0; font-size:2.5rem; font-weight:700; color:#ffffff;">💳 Credit Card Fraud Detection Portal</h1>
-    <p style="margin:8px 0 0 0; font-size:1.1rem; color:#d0d0d0; font-weight:400;">
-        Real-time transaction evaluation system using optimized XGBoost and SHAP explainability.
-    </p>
+<div style="background:linear-gradient(135deg, #080D18 0%, #111B2D 100%); padding:25px; border-radius:12px; margin-bottom:20px; border-left: 6px solid #34D399; border: 1px solid #243149;">
+    <div style="display:flex; justify-content:space-between; align-items:center;">
+        <div>
+            <h1 style="margin:0; font-size:2.2rem; font-weight:700; color:#F1F5F9;">🛡️ FinGuard AI</h1>
+            <p style="margin:6px 0 0 0; font-size:1.05rem; color:#94A3B8; font-weight:400;">
+                Intelligent Fraud Detection & Financial Risk Analytics with SHAP Explainability
+            </p>
+        </div>
+    </div>
 </div>
 """, unsafe_allow_html=True)
 
-# Error handling: check if backend is online
-if not backend_online:
-    st.error("✖ System Alert: The FastAPI Backend is currently unreachable.")
-    st.info("The frontend requires the FastAPI backend to compute predictions and SHAP explainability. Please make sure the backend server is running.")
-    if st.button("🔄 Retry Connection"):
-        st.experimental_rerun()
-    st.stop()
+# System status alert / mode indicator
+if backend_online:
+    st.markdown("""
+    <div style="background:rgba(52, 211, 153, 0.1); border:1px solid #34D399; border-radius:8px; padding:10px 16px; margin-bottom:18px; color:#34D399; font-weight:500;">
+        🟢 <b>FastAPI Backend Connected:</b> Querying real-time inference via REST API.
+    </div>
+    """, unsafe_allow_html=True)
+else:
+    st.markdown("""
+    <div style="background:rgba(56, 189, 248, 0.1); border:1px solid #38BDF8; border-radius:8px; padding:10px 16px; margin-bottom:18px; color:#38BDF8; font-weight:500;">
+        ⚡ <b>Standalone In-Process Mode Active:</b> Running direct local XGBoost inference & TreeSHAP inside Python runtime (Deployment Ready for Streamlit Cloud).
+    </div>
+    """, unsafe_allow_html=True)
+
 
 # ----------------------------------------------------
 # Left Sidebar Input Panel
@@ -114,11 +126,23 @@ input_payload = {
 analyze_btn = st.sidebar.button("📊 Analyse Transaction", use_container_width=True)
 
 if analyze_btn:
-    with st.spinner("Communicating with FastAPI Backend..."):
+    with st.spinner("Analyzing transaction features..."):
         try:
-            # Query prediction and explanations
-            prediction_res = client.predict(input_payload)
-            explanation_res = client.explain(input_payload)
+            if backend_online:
+                # Query prediction and explanations via REST API
+                prediction_res = client.predict(input_payload)
+                explanation_res = client.explain(input_payload)
+            else:
+                # Run direct local in-process inference
+                from api.schemas import TransactionInput
+                from api.predictor import make_prediction, generate_explanation
+                
+                txn_obj = TransactionInput(**input_payload)
+                pred_obj = make_prediction(txn_obj)
+                exp_obj = generate_explanation(txn_obj)
+                
+                prediction_res = pred_obj.dict()
+                explanation_res = exp_obj.dict()
             
             # Save to session state
             st.session_state.analysis_results = {
@@ -129,9 +153,10 @@ if analyze_btn:
             
             # Force switch/success feedback
             st.success("✔ Transaction analyzed successfully!")
-        except APIError as e:
-            st.error(f"✖ Backend API error: {str(e)}")
-            st.info("Check backend terminal logs for detailed stacktrace.")
+        except Exception as e:
+            st.error(f"✖ Prediction error: {str(e)}")
+            st.info("Check application logs or verify model artifact files in models/ directory.")
+
 
 # ----------------------------------------------------
 # Main Layout Navigation
@@ -183,23 +208,36 @@ with tab_overview:
             
     st.markdown('<div class="section-divider"></div>', unsafe_allow_html=True)
     
-    st.markdown("### 📊 Model Performance Comparison")
-    st.markdown("""
-    Below is the comparison of models evaluated on the test set. The models were evaluated using **Precision-Recall AUC (PR-AUC)** as the primary selection metric, as standard ROC-AUC can be overly optimistic on highly imbalanced datasets.
-    """)
+    st.markdown("### 📊 Verified Model Evaluation Metrics")
+    import json
+    report_path = "models/evaluation_report.json"
+    if os.path.exists(report_path):
+        try:
+            with open(report_path, "r") as f:
+                rep = json.load(f)
+            
+            is_synth = rep.get("is_synthetic", False)
+            data_badge = "⚠️ Synthetic Demonstration Split" if is_synth else "🟢 Genuine European Cardholder Dataset"
+            st.caption(f"Dataset Evaluation Source: {data_badge}")
+            
+            metric_cols = st.columns(4)
+            with metric_cols[0]:
+                render_metric_card("PR-AUC (Primary)", f"{rep.get('pr_auc', 0):.4f}")
+            with metric_cols[1]:
+                render_metric_card("F1-Score", f"{rep.get('f1', 0):.4f}")
+            with metric_cols[2]:
+                render_metric_card("Recall (Sensitivity)", f"{rep.get('recall', 0)*100:.1f}%")
+            with metric_cols[3]:
+                render_metric_card("Precision", f"{rep.get('precision', 0)*100:.1f}%")
+                
+            st.markdown(f"**Decision Threshold:** `{rep.get('decision_threshold', 0.50):.4f}` | **ROC-AUC:** `{rep.get('roc_auc', 0):.4f}` | **Accuracy:** `{rep.get('accuracy', 0)*100:.2f}%`")
+        except Exception as e:
+            st.warning(f"Could not load evaluation report: {e}")
+    else:
+        st.info("Evaluation report unavailable. Please run model bootstrap or training pipeline.")
     
-    # Render static table showing model training results
-    performance_data = {
-        "Model": ["XGBoost (Selected Primary)", "Random Forest", "Logistic Regression", "Isolation Forest"],
-        "PR-AUC (Primary)": ["0.8651", "0.8492", "0.7431", "0.2810"],
-        "ROC-AUC": ["0.9782", "0.9654", "0.9610", "0.8710"],
-        "Recall": ["0.8265", "0.8061", "0.8980", "0.3878"],
-        "Precision": ["0.8526", "0.8404", "0.0573", "0.2088"],
-        "F1-Score": ["0.8394", "0.8229", "0.1077", "0.2714"]
-    }
-    st.table(pd.DataFrame(performance_data))
-    
-    st.info("💡 Tip: Use the left sidebar sliders and numbers to input transaction characteristics, and click 'Analyse Transaction' to query predictions and explanations from the FastAPI service.")
+    st.info("💡 Tip: Use the left sidebar sliders and inputs to configure transaction characteristics, and click 'Analyse Transaction' to evaluate.")
+
 
 # ----------------------------------------------------
 # TAB 2: Results Page (Prediction & Explainability)

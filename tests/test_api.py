@@ -171,3 +171,41 @@ def test_predict_file_endpoint_invalid_extension():
     assert response.status_code == 400
     assert "Invalid file format" in response.json()["detail"]
 
+
+def test_predict_file_empty_csv():
+    """Verifies POST /predict-file rejects empty CSV uploads."""
+    files = {"file": ("empty.csv", "", "text/csv")}
+    response = client.post("/predict-file", files=files)
+    assert response.status_code == 422
+
+
+def test_predict_file_missing_columns():
+    """Verifies POST /predict-file rejects CSV missing required V-features."""
+    csv_content = "Time,Amount,V1\n100.0,50.0,0.1"
+    files = {"file": ("invalid.csv", csv_content, "text/csv")}
+    response = client.post("/predict-file", files=files)
+    assert response.status_code == 422
+    assert "missing required features" in response.json()["detail"]
+
+
+def test_model_stats_returns_evaluation_metrics():
+    """Verifies GET /model-stats returns genuine evaluation metrics."""
+    response = client.get("/model-stats")
+    assert response.status_code == 200
+    res_json = response.json()
+    assert "metrics" in res_json or "dataset_evaluation" in res_json
+    assert "is_synthetic" in res_json
+    assert "model" in res_json
+
+
+def test_feature_names_endpoint():
+    """Verifies GET /feature-names returns 30 expected feature names."""
+    response = client.get("/feature-names")
+    assert response.status_code == 200
+    features = response.json()
+    assert len(features) == 30
+    assert "Time" in features
+    assert "Amount" in features
+    assert "V14" in features
+
+
