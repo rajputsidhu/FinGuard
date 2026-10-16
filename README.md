@@ -42,36 +42,37 @@ In financial risk engineering and modern payment gateways, fraud classification 
 
 ```mermaid
 graph TD
-    User([Risk Officer / Security Analyst]) <-->|Browser Interaction| ReactApp[FinGuard AI React 18 + Vite]
+    User([Risk Officer / Security Analyst]) <-->|Browser Interaction| ReactApp["FinGuard AI React 18 + Vite"]
     
-    subgraph Frontend Client [Port 5173 / Production Nginx:80]
-        Router[React Router 6]
-        Context[AssessmentContext: Session State]
-        ApiClient[fraudApi.js: Central Axios Client]
-        Views[Dashboard | Assessment | Batch | Explain | Model | API | Privacy]
+    subgraph Frontend_Client ["Frontend Client (Port 5173 / Production Nginx:80)"]
+        Router["React Router 6"]
+        Context["AssessmentContext: Session State"]
+        ApiClient["fraudApi.js: Central Axios Client"]
+        Views["Dashboard / Assessment / Batch / Explain / Model / API / Privacy"]
     end
     
-    subgraph FastAPI Backend [Port 8000]
-        Middleware[Correlation ID & Exception Sanitizer]
-        MainRouter[api/main.py Router]
-        Predictor[api/predictor.py LRU Engine]
-        Config[api/config.py Settings]
+    subgraph FastAPI_Backend ["FastAPI Backend (Port 8000)"]
+        Middleware["Correlation ID & Exception Sanitizer"]
+        MainRouter["api/main.py Router"]
+        Predictor["api/predictor.py LRU Engine"]
+        Config["api/config.py Settings"]
         
-        MainRouter --> Health[/health & /ready probes]
-        MainRouter --> Predict[/predict & /explain]
-        MainRouter --> Batch[/predict-file]
-        MainRouter --> Metadata[/model-info & /model-stats]
+        MainRouter --> Health["/health & /ready probes"]
+        MainRouter --> Predict["/predict & /explain"]
+        MainRouter --> Batch["/predict-file"]
+        MainRouter --> Metadata["/model-info & /model-stats"]
     end
     
-    subgraph Machine Learning Artifacts [models/]
-        XGBoost[(model_xgb.pkl)]
-        Scaler[(scaler.pkl)]
-        Threshold[(best_threshold.pkl)]
-        Explainer[(shap_explainer.pkl)]
-        Features[(feature_names.pkl)]
-        Report[(evaluation_report.json)]
-        Meta[(metadata.json)]
+    subgraph ML_Artifacts ["Machine Learning Artifacts (models/)"]
+        XGBoost[("model_xgb.pkl")]
+        Scaler[("scaler.pkl")]
+        Threshold[("best_threshold.pkl")]
+        Explainer[("shap_explainer.pkl")]
+        Features[("feature_names.pkl")]
+        Report[("evaluation_report.json")]
+        Meta[("metadata.json")]
     end
+
     
     ReactApp <-->|REST API JSON / VITE_API_BASE_URL| FastAPI
     Predictor --> Scaler
