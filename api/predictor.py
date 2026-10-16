@@ -122,11 +122,35 @@ def get_threshold() -> float:
 
 @lru_cache(maxsize=1)
 def get_shap_explainer() -> Any:
-    """Loads and caches the SHAP TreeExplainer."""
-    if not os.path.exists(EXPLAINER_PATH):
-        raise FileNotFoundError(f"✖ SHAP Explainer not found at {EXPLAINER_PATH}. Run explainability script first.")
-    logger.info("✔ Loaded SHAP TreeExplainer from disk (cached).")
-    return joblib.load(EXPLAINER_PATH)
+    """
+    Loads and caches the SHAP TreeExplainer.
+    If the serialized explainer pickle cannot be loaded (e.g. due to SHAP version
+    incompatibilities across environments), dynamically initializes a TreeExplainer
+    from the loaded XGBoost model.
+    """
+    import shap
+    
+    # 1. Attempt loading pre-computed explainer artifact from disk
+    if os.path.exists(EXPLAINER_PATH):
+        try:
+            explainer = joblib.load(EXPLAINER_PATH)
+            logger.info("✔ Loaded SHAP TreeExplainer from disk (cached).")
+            return explainer
+        except Exception as e:
+            logger.warning(
+                f"⚠ SHAP explainer pickle could not be loaded due to environment/version mismatch ({e}). "
+                "Constructing TreeExplainer dynamically from XGBoost model..."
+            )
+            
+    # 2. Dynamic fallback from XGBoost model
+    try:
+        xgb = get_xgb_model()
+        explainer = shap.TreeExplainer(xgb)
+        logger.info("✔ Dynamically initialized SHAP TreeExplainer from XGBoost model (cached).")
+        return explainer
+    except Exception as e:
+        logger.error(f"✖ Failed to initialize SHAP TreeExplainer dynamically: {e}")
+        raise RuntimeError(f"Explainability engine unavailable: {e}")
 
 @lru_cache(maxsize=1)
 def get_feature_names() -> List[str]:

@@ -92,3 +92,27 @@ def test_make_prediction_fraud(mock_get_threshold, mock_get_xgb_model, mock_prep
     assert response.risk_level == "CRITICAL"
     assert response.threshold == 0.40
 
+def test_get_shap_explainer_fallback(mock_transaction):
+    """
+    Verifies that get_shap_explainer cleanly recovers via dynamic TreeExplainer
+    when the disk pickle raises AttributeError or deserialization errors.
+    """
+    from api.predictor import get_shap_explainer, EXPLAINER_PATH
+    import joblib
+    original_load = joblib.load
+
+    def mock_load(path, *args, **kwargs):
+        if path == EXPLAINER_PATH:
+            raise AttributeError("Can't get attribute 'Tree' on shap.explainers._tree")
+        return original_load(path, *args, **kwargs)
+
+    get_shap_explainer.cache_clear()
+    with patch("joblib.load", side_effect=mock_load):
+        explainer = get_shap_explainer()
+        assert explainer is not None
+        explanation = generate_explanation(mock_transaction)
+        assert explanation.base_value is not None
+        assert len(explanation.top_features) > 0
+
+    get_shap_explainer.cache_clear()
+
