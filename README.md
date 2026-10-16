@@ -12,6 +12,7 @@
 
 Built on an enterprise-grade dark financial aesthetic, FinGuard AI pairs an **Extreme Gradient Boosting (XGBoost)** classification engine optimized for extreme class imbalance with game-theoretic **SHAP (SHapley Additive exPlanations)** to provide transparent, interpretable, and audited transaction risk assessments.
 
+App Link: https://finguard-xg2q.onrender.com/
 ---
 
 ## 📌 1. Project Overview & Problems Addressed
