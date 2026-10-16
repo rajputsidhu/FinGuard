@@ -1,7 +1,8 @@
 import axios from 'axios';
 
-// Environment variable configuration with fallback
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || import.meta.env.VITE_API_URL || 'http://localhost:8000';
+// Environment variable configuration with relative fallback in production
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? (import.meta.env.DEV ? 'http://localhost:8000' : '');
+
 
 // Centralized Axios client instance
 const apiClient = axios.create({

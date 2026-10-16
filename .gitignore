@@ -9,9 +9,9 @@ __pycache__/
 # Distribution / packaging
 .Python
 build/
-develop-eggs/
 dist/
-downloads/
+!frontend/dist/
+
 eggs/
 .eggs/
 lib/
@@ -50,5 +50,6 @@ env/
 # Node / Frontend
 node_modules/
 **/node_modules/
-frontend/dist/
+# frontend/dist is tracked for 1-click Python full-stack cloud deployment
+
 

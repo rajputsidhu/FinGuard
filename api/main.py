@@ -321,11 +321,34 @@ async def predict_file(file: UploadFile = File(...)):
             detail=f"Batch prediction failed: {str(e)}"
         )
 
+# ----------------------------------------------------
+# Static Frontend Serving (Unified Full-Stack Deployment)
+# ----------------------------------------------------
+from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse
+
+frontend_dist = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "frontend", "dist")
+if os.path.exists(frontend_dist):
+    assets_dir = os.path.join(frontend_dist, "assets")
+    if os.path.exists(assets_dir):
+        app.mount("/assets", StaticFiles(directory=assets_dir), name="static-assets")
+
+    @app.get("/{full_path:path}")
+    async def serve_react_app(full_path: str):
+        # Exclude API endpoints, docs, and OpenAPI specification
+        api_prefixes = ("health", "ready", "predict", "explain", "model-", "feature-names", "docs", "openapi.json")
+        if any(full_path == prefix or full_path.startswith(prefix + "/") for prefix in api_prefixes):
+            raise HTTPException(status_code=404, detail="API endpoint not found")
+        
+        file_path = os.path.join(frontend_dist, full_path)
+        if full_path and os.path.isfile(file_path):
+            return FileResponse(file_path)
+        return FileResponse(os.path.join(frontend_dist, "index.html"))
+
 if __name__ == "__main__":
     import uvicorn
-    # Load settings from environment or fallback
     host = os.getenv("HOST", "0.0.0.0")
     port = int(os.getenv("PORT", 8000))
-    
     logger.info(f"Starting API server on {host}:{port}")
     uvicorn.run("main:app", host=host, port=port, reload=True)
+
